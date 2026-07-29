@@ -7,13 +7,18 @@ import com.example.DuAnTrainning.enums.AuctionStatus;
 import com.example.DuAnTrainning.enums.ProductStatus;
 import com.example.DuAnTrainning.exception.ApplicationException;
 import com.example.DuAnTrainning.exception.ErrorCode;
+import com.example.DuAnTrainning.mapper.AuctionMapper;
+import com.example.DuAnTrainning.mapper.ProductImageMapper;
 import com.example.DuAnTrainning.mapper.ProductMapper;
 import com.example.DuAnTrainning.repository.*;
+import com.example.DuAnTrainning.service.helper.ProductResponseHelper;
 import com.example.DuAnTrainning.validator.AuctionValidator;
 import com.example.DuAnTrainning.validator.ProductImageValidator;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.transaction.support.TransactionSynchronization;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 
 import java.util.List;
 import java.util.stream.Collectors;
@@ -31,12 +36,17 @@ public class ProductService {
     private final ProductMapper productMapper;
     private final AuctionValidator auctionValidator;
     private final ProductImageValidator productImageValidator;
+    private final CloudinaryService cloudinaryService;
+    private final ProductResponseHelper productResponseHelper;
+    private final AuctionMapper auctionMapper;
+    private final ProductImageMapper productImageMapper;
+
+    //Người bán tạo sản phẩm đăng bán đấu giá
 
     @Transactional
-    public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
-        User seller = userRepository.findById(requestDTO.getSellerId())
+    public ProductResponseDTO createProduct(Long sellerId,ProductRequestDTO requestDTO) {
+        User seller = userRepository.findById(sellerId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
-
         Category category = categoryRepository.findById(requestDTO.getCategoryId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.CATEGORY_NOT_FOUND));
 
@@ -44,7 +54,7 @@ public class ProductService {
             throw new ApplicationException(ErrorCode.CATEGORY_INACTIVE);
         }
 
-        productImageValidator.validate(requestDTO.getImageUrls());
+        productImageValidator.validate(requestDTO.getImages());
         auctionValidator.validate(requestDTO);
 
         Product product = productMapper.toEntity(requestDTO);
@@ -52,66 +62,70 @@ public class ProductService {
         product.setCategory(category);
         product.setStatus(ProductStatus.PENDING);
 
+        List<CloudinaryService.UploadedImage> uploadedImages = cloudinaryService.uploadAll(requestDTO.getImages());
+        deleteCloudinaryImagesWhenTransactionRollsBack(uploadedImages);
+
         Product savedProduct = productRepository.save(product);
 
-        List<ProductImage> images = buildProductImages(savedProduct, requestDTO.getImageUrls());
+        List<String> imageUrls = uploadedImages.stream()
+                .map(CloudinaryService.UploadedImage::secureUrl)
+                .collect(Collectors.toList());
+        List<ProductImage> images = productImageMapper
+                .toEntities(savedProduct, imageUrls);
+
         productImageRepository.saveAll(images);
 
-        Auction auction = buildAuction(savedProduct, requestDTO);
+        Auction auction = auctionMapper.toEntity(savedProduct, requestDTO);
         Auction savedAuction = auctionRepository.save(auction);
 
-        List<String> imageUrls = images.stream()
-                .map(ProductImage::getImageUrl)
-                .collect(Collectors.toList());
+        return productResponseHelper.build(
+                savedProduct,
+                savedAuction,
+                imageUrls
+        );
+    }
 
-        return buildProductResponse(savedProduct, savedAuction, imageUrls);
+    @Transactional(readOnly = true)
+    public List<ProductResponseDTO> getProductsBySellerId(Long sellerId) {
+        if (!userRepository.existsById(sellerId)) {
+            throw new ApplicationException(ErrorCode.USER_NOT_FOUND);
+        }
+
+        List<Product> products = productRepository
+                .findBySeller_IdOrderByCreatedAtDesc(sellerId);
+
+        return productResponseHelper.buildAll(products);
     }
 
     @Transactional(readOnly = true)
     public ProductResponseDTO getProductWithAuctionById(Long productId) {
         Product product = productRepository.findById(productId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.PRODUCT_NOT_FOUND));
+                .orElseThrow(() ->
+                        new ApplicationException(ErrorCode.PRODUCT_NOT_FOUND)
+                );
 
-        Auction auction = auctionRepository.findByProduct_Id(productId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.AUCTION_NOT_FOUND));
-
-        List<String> imageUrls = productImageRepository.findByProductIdOrderByDisplayOrderAsc(productId)
-                .stream()
-                .map(ProductImage::getImageUrl)
-                .collect(Collectors.toList());
-
-        return buildProductResponse(product, auction, imageUrls);
+        return productResponseHelper.build(product);
     }
 
-    private List<ProductImage> buildProductImages(Product product, List<String> imageUrls) {
-        return IntStream.range(0, imageUrls.size())
-                .mapToObj(i -> {
-                    ProductImage img = new ProductImage();
-                    img.setProduct(product);
-                    img.setImageUrl(imageUrls.get(i));
-                    img.setDisplayOrder(i);
-                    return img;
-                })
-                .collect(Collectors.toList());
+    private void deleteCloudinaryImagesWhenTransactionRollsBack(
+            List<CloudinaryService.UploadedImage> uploadedImages) {
+        TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+            @Override
+            public void afterCompletion(int status) {
+                if (status != STATUS_COMMITTED) {
+                    cloudinaryService.deleteAll(uploadedImages);
+                }
+            }
+        });
     }
 
-    private Auction buildAuction(Product product, ProductRequestDTO dto) {
-        Auction auction = new Auction();
-        auction.setProduct(product);
-        auction.setAuctionType(dto.getAuctionType());
-        auction.setStartPrice(dto.getStartPrice());
-        auction.setReservePrice(dto.getReservePrice());
-        auction.setBidStep(dto.getBidStep());
-        auction.setCurrentPrice(dto.getStartPrice());
-        auction.setStartTime(dto.getStartTime());
-        auction.setEndTime(dto.getEndTime());
-        auction.setStatus(AuctionStatus.SCHEDULED);
-        return auction;
-    }
 
-    private ProductResponseDTO buildProductResponse(Product product, Auction auction, List<String> imageUrls) {
-        ProductResponseDTO responseDTO = productMapper.toDTO(product, auction);
-        responseDTO.setImageUrls(imageUrls);
-        return responseDTO;
+    //Khách vãng lai hay người mua có thể xem được các sản phẩm mà người bán đăng bán (chỉ khi ở trạng thái đc duyệt)
+    @Transactional(readOnly = true)
+    public List<ProductResponseDTO> getPublicProducts() {
+        List<Product> products = productRepository
+                .findByStatusOrderByCreatedAtDesc(ProductStatus.APPROVED);
+
+        return productResponseHelper.buildAll(products);
     }
 }

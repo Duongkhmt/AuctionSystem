@@ -4,6 +4,7 @@ import com.example.DuAnTrainning.enums.AuctionType;
 import jakarta.validation.constraints.*;
 import lombok.Getter;
 import lombok.Setter;
+import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
@@ -13,8 +14,6 @@ import java.util.Map;
 @Getter
 @Setter
 public class ProductRequestDTO {
-    @NotNull(message = "Vui lòng cung cấp người bán")
-    private Long sellerId;
 
     @NotNull(message = "Vui lòng chọn danh mục")
     private Long categoryId;
@@ -29,7 +28,7 @@ public class ProductRequestDTO {
     private Map<String, Object> attributes;
 
     @NotEmpty(message = "Sản phẩm cần tối thiểu 1 ảnh")
-    private List<String> imageUrls;
+    private List<MultipartFile> images;
 
     // ===== THÔNG TIN ĐẤU GIÁ =====
 
