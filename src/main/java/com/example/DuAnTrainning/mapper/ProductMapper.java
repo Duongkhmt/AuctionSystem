@@ -34,6 +34,7 @@ public interface ProductMapper {
     @Mapping(target = "status", source = "product.status")
     @Mapping(target = "createdAt", source = "product.createdAt")
     @Mapping(target = "imageUrls", ignore = true)
+    @Mapping(target = "images", ignore = true)
     @Mapping(target = "auctionId", source = "auction.id")
     @Mapping(target = "auctionType", source = "auction.auctionType")
     @Mapping(target = "startPrice", source = "auction.startPrice")

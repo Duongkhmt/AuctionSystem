@@ -1,5 +1,6 @@
 package com.example.DuAnTrainning.service.helper;
 
+import com.example.DuAnTrainning.dto.response.ProductImageDTO;
 import com.example.DuAnTrainning.dto.response.ProductResponseDTO;
 import com.example.DuAnTrainning.entity.Auction;
 import com.example.DuAnTrainning.entity.Product;
@@ -37,7 +38,7 @@ public class ProductResponseHelper {
                 .map(ProductImage::getImageUrl)
                 .toList();
 
-        List<com.example.DuAnTrainning.dto.response.ProductImageDTO> images = productImages.stream()
+        List<ProductImageDTO> images = productImages.stream()
                 .map(img -> new com.example.DuAnTrainning.dto.response.ProductImageDTO(img.getId(), img.getImageUrl(), img.getDisplayOrder()))
                 .toList();
 
