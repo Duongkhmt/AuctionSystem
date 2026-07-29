@@ -10,6 +10,7 @@ public enum ErrorCode {
 
     // ===== USER: 1000 - 1099 =====
     USER_NOT_FOUND(1001, "Người dùng không tồn tại", HttpStatus.NOT_FOUND),
+    UNAUTHORIZED_ACCESS(1002, "Bạn không có quyền chỉnh sửa sản phẩm này", HttpStatus.FORBIDDEN),
 
     // ===== PRODUCT: 1100 - 1199 =====
     PRODUCT_NOT_FOUND(1101, "Sản phẩm không tồn tại", HttpStatus.NOT_FOUND),
@@ -29,8 +30,10 @@ public enum ErrorCode {
     RESERVE_PRICE_TOO_LOW(1304, "Giá bảo lưu không được thấp hơn giá khởi điểm", HttpStatus.BAD_REQUEST),
     INVALID_AUCTION_TIME(1305, "Thời gian kết thúc phải sau thời gian bắt đầu", HttpStatus.BAD_REQUEST),
     START_TIME_IN_PAST(1306, "Thời gian bắt đầu không được ở quá khứ", HttpStatus.BAD_REQUEST),
-    AUCTION_DURATION_TOO_SHORT(1307, "Phiên đấu giá phải kéo dài tối thiểu 30 phút", HttpStatus.BAD_REQUEST);
-
+    AUCTION_DURATION_TOO_SHORT(1307, "Phiên đấu giá phải kéo dài tối thiểu 30 phút", HttpStatus.BAD_REQUEST),
+    AUCTION_ALREADY_STARTED(1308, "Phiên đấu giá đã bắt đầu hoặc kết thúc, không được phép chỉnh sửa", HttpStatus.BAD_REQUEST),
+    CANNOT_DELETE_ACTIVE_AUCTION(1309, "Không thể xóa sản phẩm khi phiên đấu giá đang diễn ra hoặc đã hoàn tất", HttpStatus.BAD_REQUEST),
+    CANNOT_CANCEL_STARTED_AUCTION(1310, "Phiên đấu giá đã bắt đầu hoặc đã kết thúc, người bán không thể tự hủy", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatusCode httpStatusCode) {
         this.message = message;

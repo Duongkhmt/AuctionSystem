@@ -1,27 +1,28 @@
 package com.example.DuAnTrainning.mapper;
 
+
 import com.example.DuAnTrainning.entity.Product;
 import com.example.DuAnTrainning.entity.ProductImage;
+import com.example.DuAnTrainning.service.CloudinaryService.UploadedImage;
 import org.springframework.stereotype.Component;
-
 import java.util.List;
 import java.util.stream.IntStream;
 
 @Component
 public class ProductImageMapper {
 
-    public List<ProductImage> toEntities(
-            Product product,
-            List<String> imageUrls
-    ) {
-        return IntStream.range(0, imageUrls.size())
+    // Overload dùng cho CreateProduct (startDisplayOrder mặc định = 0)
+    public List<ProductImage> toEntities(Product product, List<UploadedImage> uploadedImages) {
+        return toEntities(product, uploadedImages, 0);
+    }
+    public List<ProductImage> toEntities(Product product, List<UploadedImage> uploadedImages, int startDisplayOrder) {
+        return IntStream.range(0, uploadedImages.size())
                 .mapToObj(index -> {
                     ProductImage image = new ProductImage();
-
                     image.setProduct(product);
-                    image.setImageUrl(imageUrls.get(index));
-                    image.setDisplayOrder(index);
-
+                    image.setImageUrl(uploadedImages.get(index).secureUrl());
+                    image.setPublicId(uploadedImages.get(index).publicId()); // Lưu publicId
+                    image.setDisplayOrder(startDisplayOrder + index);
                     return image;
                 })
                 .toList();

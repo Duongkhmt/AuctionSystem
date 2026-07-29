@@ -20,6 +20,7 @@ public class ProductResponseDTO {
     private Map<String, Object> attributes; // Không cần tự parse thủ công nữa
     private String status;
     private List<String> imageUrls;
+    private List<ProductImageDTO> images;
     private LocalDateTime createdAt;
 
     // Auction

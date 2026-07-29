@@ -21,6 +21,9 @@ public class ProductImage {
     @Column(name = "image_url", nullable = false, length = 255)
     private String imageUrl;
 
+    @Column(name = "public_id", length = 255)
+    private String publicId;
+
     @Column(name = "display_order", nullable = false)
     private int displayOrder = 0;
 

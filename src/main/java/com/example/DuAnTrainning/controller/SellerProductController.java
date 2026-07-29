@@ -1,6 +1,7 @@
 package com.example.DuAnTrainning.controller;
 
 import com.example.DuAnTrainning.dto.request.ProductRequestDTO;
+import com.example.DuAnTrainning.dto.request.ProductUpdateRequestDTO;
 import com.example.DuAnTrainning.dto.response.ProductResponseDTO;
 import com.example.DuAnTrainning.service.ProductService;
 import jakarta.validation.Valid;
@@ -18,6 +19,15 @@ public class SellerProductController {
 
     private final ProductService productService;
 
+    @GetMapping
+    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts(
+            @PathVariable Long sellerId
+    ) {
+        return ResponseEntity.ok(
+                productService.getProductsBySellerId(sellerId)
+        );
+    }
+
     @PostMapping
     public ResponseEntity<ProductResponseDTO> createProduct(
             @PathVariable Long sellerId,
@@ -31,12 +41,34 @@ public class SellerProductController {
                 .body(response);
     }
 
-    @GetMapping
-    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts(
-            @PathVariable Long sellerId
+    @PutMapping("/{id}")
+    public ResponseEntity<ProductResponseDTO> updateProduct(
+            @PathVariable Long sellerId,
+            @PathVariable Long id,
+            @Valid @ModelAttribute ProductUpdateRequestDTO requestDTO
     ) {
-        return ResponseEntity.ok(
-                productService.getProductsBySellerId(sellerId)
-        );
+        ProductResponseDTO response =
+                productService.updateProduct(sellerId, id, requestDTO);
+        return ResponseEntity.ok(response);
     }
+
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> deleteProduct(
+            @PathVariable Long sellerId,
+            @PathVariable Long id
+    ) {
+        productService.deleteProduct(sellerId, id);
+        return ResponseEntity.noContent().build();
+    }
+
+    @PutMapping("/{id}/cancel")
+    public ResponseEntity<ProductResponseDTO> cancelAuction(
+            @PathVariable Long sellerId,
+            @PathVariable Long id
+    ) {
+        ProductResponseDTO response = productService.cancelAuction(sellerId, id);
+        return ResponseEntity.ok(response);
+    }
+
+
 }

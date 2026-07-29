@@ -42,6 +42,17 @@ public class CloudinaryService {
         }
     }
 
+    public void deleteByPublicId(String publicId) {
+        if (publicId == null || publicId.isBlank()) return;
+        try {
+            cloudinary.uploader().destroy(publicId, ObjectUtils.asMap(
+                    "resource_type", "image",
+                    "invalidate", true
+            ));
+        } catch (IOException | RuntimeException ignored) {
+        }
+    }
+
     public void deleteAll(List<UploadedImage> uploadedImages) {
         for (UploadedImage image : uploadedImages) {
             try {

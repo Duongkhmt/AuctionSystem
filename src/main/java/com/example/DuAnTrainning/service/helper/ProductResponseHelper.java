@@ -30,29 +30,42 @@ public class ProductResponseHelper {
                         new ApplicationException(ErrorCode.AUCTION_NOT_FOUND)
                 );
 
-        List<String> imageUrls = productImageRepository
-                .findByProductIdOrderByDisplayOrderAsc(product.getId())
-                .stream()
+        List<ProductImage> productImages = productImageRepository
+                .findByProductIdOrderByDisplayOrderAsc(product.getId());
+
+        List<String> imageUrls = productImages.stream()
                 .map(ProductImage::getImageUrl)
+                .toList();
+
+        List<com.example.DuAnTrainning.dto.response.ProductImageDTO> images = productImages.stream()
+                .map(img -> new com.example.DuAnTrainning.dto.response.ProductImageDTO(img.getId(), img.getImageUrl(), img.getDisplayOrder()))
                 .toList();
 
         ProductResponseDTO response = productMapper.toDTO(product, auction);
         response.setImageUrls(imageUrls);
+        response.setImages(images);
 
         return response;
     }
-    // Dùng cho API create: đã có đủ dữ liệu, không query lại database
+
     public ProductResponseDTO build(
             Product product,
             Auction auction,
             List<String> imageUrls
     ) {
+        List<ProductImage> productImages = productImageRepository
+                .findByProductIdOrderByDisplayOrderAsc(product.getId());
+
+        List<com.example.DuAnTrainning.dto.response.ProductImageDTO> images = productImages.stream()
+                .map(img -> new com.example.DuAnTrainning.dto.response.ProductImageDTO(img.getId(), img.getImageUrl(), img.getDisplayOrder()))
+                .toList();
+
         ProductResponseDTO response = productMapper.toDTO(product, auction);
         response.setImageUrls(imageUrls);
+        response.setImages(images);
         return response;
     }
 
-    // Dùng cho API list: chỉ chạy 2 query cho toàn bộ auction và toàn bộ ảnh
     public List<ProductResponseDTO> buildAll(List<Product> products) {
         if (products.isEmpty()) {
             return List.of();
@@ -70,15 +83,11 @@ public class ProductResponseHelper {
                         Function.identity()
                 ));
 
-        Map<Long, List<String>> imageUrlsByProductId = productImageRepository
+        Map<Long, List<ProductImage>> imagesByProductId = productImageRepository
                 .findByProductIdInOrderByProductIdAscDisplayOrderAsc(productIds)
                 .stream()
                 .collect(Collectors.groupingBy(
-                        image -> image.getProduct().getId(),
-                        Collectors.mapping(
-                                ProductImage::getImageUrl,
-                                Collectors.toList()
-                        )
+                        image -> image.getProduct().getId()
                 ));
 
         return products.stream()
@@ -91,10 +100,21 @@ public class ProductResponseHelper {
                         );
                     }
 
-                    List<String> imageUrls = imageUrlsByProductId
+                    List<ProductImage> productImages = imagesByProductId
                             .getOrDefault(product.getId(), List.of());
 
-                    return build(product, auction, imageUrls);
+                    List<String> imageUrls = productImages.stream()
+                            .map(ProductImage::getImageUrl)
+                            .toList();
+
+                    List<com.example.DuAnTrainning.dto.response.ProductImageDTO> images = productImages.stream()
+                            .map(img -> new com.example.DuAnTrainning.dto.response.ProductImageDTO(img.getId(), img.getImageUrl(), img.getDisplayOrder()))
+                            .toList();
+
+                    ProductResponseDTO dto = productMapper.toDTO(product, auction);
+                    dto.setImageUrls(imageUrls);
+                    dto.setImages(images);
+                    return dto;
                 })
                 .toList();
     }
