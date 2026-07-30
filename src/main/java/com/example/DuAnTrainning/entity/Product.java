@@ -47,6 +47,9 @@ public class Product {
     @Column(nullable = false, length = 30)
     private ProductStatus status;
 
+    @Column(name = "rejection_reason", length = 255)
+    private String rejectionReason;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now();
 }

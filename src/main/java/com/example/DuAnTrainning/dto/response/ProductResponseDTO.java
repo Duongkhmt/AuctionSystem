@@ -19,6 +19,7 @@ public class ProductResponseDTO {
     private String description;
     private Map<String, Object> attributes; // Không cần tự parse thủ công nữa
     private String status;
+    private String rejectionReason;
     private List<String> imageUrls;
     private List<ProductImageDTO> images;
     private LocalDateTime createdAt;

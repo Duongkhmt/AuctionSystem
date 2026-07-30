@@ -18,6 +18,7 @@ public enum ErrorCode {
     TOO_MANY_IMAGES(1103, "Sản phẩm không được vượt quá 20 ảnh", HttpStatus.BAD_REQUEST),
     INVALID_IMAGE_FILE(1104, "Ảnh phải là JPG, PNG hoặc WebP và không vượt quá 5MB", HttpStatus.BAD_REQUEST),
     IMAGE_UPLOAD_FAILED(1105, "Không thể tải ảnh sản phẩm lên Cloudinary", HttpStatus.INTERNAL_SERVER_ERROR),
+    PRODUCT_NOT_PENDING_APPROVAL(1106, "Bài đăng không ở trạng thái chờ duyệt", HttpStatus.BAD_REQUEST),
 
     // ===== CATEGORY: 1200 - 1299 =====
     CATEGORY_NOT_FOUND(1201, "Danh mục không tồn tại", HttpStatus.NOT_FOUND),
@@ -33,7 +34,8 @@ public enum ErrorCode {
     AUCTION_DURATION_TOO_SHORT(1307, "Phiên đấu giá phải kéo dài tối thiểu 30 phút", HttpStatus.BAD_REQUEST),
     AUCTION_ALREADY_STARTED(1308, "Phiên đấu giá đã bắt đầu hoặc kết thúc, không được phép chỉnh sửa", HttpStatus.BAD_REQUEST),
     CANNOT_DELETE_ACTIVE_AUCTION(1309, "Không thể xóa sản phẩm khi phiên đấu giá đang diễn ra hoặc đã hoàn tất", HttpStatus.BAD_REQUEST),
-    CANNOT_CANCEL_STARTED_AUCTION(1310, "Phiên đấu giá đã bắt đầu hoặc đã kết thúc, người bán không thể tự hủy", HttpStatus.BAD_REQUEST);
+    CANNOT_CANCEL_STARTED_AUCTION(1310, "Phiên đấu giá đã bắt đầu hoặc đã kết thúc, người bán không thể tự hủy", HttpStatus.BAD_REQUEST),
+    AUCTION_EXPIRED_BEFORE_APPROVAL(1311, "Thời gian đấu giá đã trôi qua trong lúc chờ duyệt, không thể chấp thuận", HttpStatus.BAD_REQUEST);
 
     ErrorCode(int code, String message, HttpStatusCode httpStatusCode) {
         this.message = message;

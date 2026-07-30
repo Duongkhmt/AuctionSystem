@@ -1,5 +1,6 @@
 package com.example.DuAnTrainning.service;
 
+import com.example.DuAnTrainning.dto.request.ProductRejectRequestDTO;
 import com.example.DuAnTrainning.dto.request.ProductRequestDTO;
 import com.example.DuAnTrainning.dto.request.ProductUpdateRequestDTO;
 import com.example.DuAnTrainning.dto.response.ProductResponseDTO;
@@ -12,6 +13,7 @@ import com.example.DuAnTrainning.mapper.AuctionMapper;
 import com.example.DuAnTrainning.mapper.ProductImageMapper;
 import com.example.DuAnTrainning.mapper.ProductMapper;
 import com.example.DuAnTrainning.repository.*;
+import com.example.DuAnTrainning.service.helper.ProductAuctionLookupHelper;
 import com.example.DuAnTrainning.service.helper.ProductResponseHelper;
 import com.example.DuAnTrainning.validator.AuctionValidator;
 import com.example.DuAnTrainning.validator.ProductImageValidator;
@@ -22,6 +24,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
 import java.util.Set;
@@ -44,49 +47,38 @@ public class ProductService {
     private final ProductResponseHelper productResponseHelper;
     private final AuctionMapper auctionMapper;
     private final ProductImageMapper productImageMapper;
+    private final ProductAuctionLookupHelper productAuctionLookupHelper;
 
     //Người bán tạo sản phẩm đăng bán đấu giá
 
     @Transactional
-    public ProductResponseDTO createProduct(Long sellerId,ProductRequestDTO requestDTO) {
+    public ProductResponseDTO createProduct(Long sellerId, ProductRequestDTO requestDTO) {
         User seller = userRepository.findById(sellerId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
         Category category = categoryRepository.findById(requestDTO.getCategoryId())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.CATEGORY_NOT_FOUND));
-
         if (!category.isActive()) {
             throw new ApplicationException(ErrorCode.CATEGORY_INACTIVE);
         }
-
         productImageValidator.validate(requestDTO.getImages());
         auctionValidator.validate(requestDTO);
-
         Product product = productMapper.toEntity(requestDTO);
         product.setSeller(seller);
         product.setCategory(category);
         product.setStatus(ProductStatus.PENDING);
-
+        // 1. Upload Cloudinary
         List<CloudinaryService.UploadedImage> uploadedImages = cloudinaryService.uploadAll(requestDTO.getImages());
         deleteCloudinaryImagesWhenTransactionRollsBack(uploadedImages);
-
+        // 2. Lưu Product
         Product savedProduct = productRepository.save(product);
-
-        List<String> imageUrls = uploadedImages.stream()
-                .map(CloudinaryService.UploadedImage::secureUrl)
-                .collect(Collectors.toList());
-        List<ProductImage> images = productImageMapper
-                .toEntities(savedProduct, uploadedImages);
-
-        productImageRepository.saveAll(images);
-
+        // 3. Map & Lưu ProductImages (Hứng lấy savedImages có chứa ID từ DB)
+        List<ProductImage> images = productImageMapper.toEntities(savedProduct, uploadedImages);
+        List<ProductImage> savedImages = productImageRepository.saveAll(images);
+        // 4. Map & Lưu Auction
         Auction auction = auctionMapper.toEntity(savedProduct, requestDTO);
         Auction savedAuction = auctionRepository.save(auction);
-
-        return productResponseHelper.build(
-                savedProduct,
-                savedAuction,
-                imageUrls
-        );
+        // 5. TRUYỀN THẲNG 'savedImages' VÀO HELPER (Bỏ đoạn map imageUrls thủ công)
+        return productResponseHelper.build(savedProduct, savedAuction, savedImages);
     }
 
     private void deleteCloudinaryImagesWhenTransactionRollsBack(
@@ -267,6 +259,7 @@ public class ProductService {
             }
         });
     }
+
     //Xóa sản phẩm
     @Transactional
     public void deleteProduct(Long sellerId, Long productId) {
@@ -294,6 +287,7 @@ public class ProductService {
             throw new ApplicationException(ErrorCode.CANNOT_DELETE_ACTIVE_AUCTION);
         }
     }
+
     //Hủy đăng sản phẩm
     @Transactional
     public ProductResponseDTO cancelAuction(Long sellerId, Long productId) {
@@ -305,6 +299,49 @@ public class ProductService {
 
         // 4. Trả về DTO
         return productResponseHelper.build(product);
+    }
+
+    //Admin
+    // 1. Lấy danh sách tất cả bài đăng đang chờ Admin duyệt (ProductStatus = PENDING)
+    @Transactional(readOnly = true)
+    public List<ProductResponseDTO> getPendingProducts() {
+        List<Product> products = productRepository.findByStatusOrderByCreatedAtDesc(ProductStatus.PENDING);
+        return productResponseHelper.buildAll(products);
+    }
+    // 2. Admin Duyệt Bài Đăng (APPROVED)
+    @Transactional
+    public ProductResponseDTO approveProduct(Long productId) {
+        // Dùng từ khóa var và gọi Helper gộp gọn gàng
+        var holder = productAuctionLookupHelper.findPendingProductAndAuction(productId);
+        Product product = holder.product();
+        Auction auction = holder.auction();
+        LocalDateTime now = LocalDateTime.now();
+        // Check 1: Nếu thời gian kết thúc đã trôi qua trước khi Admin kịp duyệt
+        if (auction.getEndTime().isBefore(now)) {
+            throw new ApplicationException(ErrorCode.AUCTION_EXPIRED_BEFORE_APPROVAL);
+        }
+        // Check 2: Nếu startTime đã trôi qua trong lúc chờ duyệt -> Kích hoạt Running ngay!
+        if (auction.getStartTime().isBefore(now) || auction.getStartTime().isEqual(now)) {
+            auction.setStatus(AuctionStatus.RUNNING);
+        } else {
+            auction.setStatus(AuctionStatus.SCHEDULED);
+        }
+        product.setStatus(ProductStatus.APPROVED);
+        List<ProductImage> images = productImageRepository.findByProductIdOrderByDisplayOrderAsc(productId);
+        return productResponseHelper.build(product, auction, images);
+    }
+
+    // 3. Admin Từ Chối Bài Đăng (REJECTED)
+    @Transactional
+    public ProductResponseDTO rejectProduct(Long productId, ProductRejectRequestDTO rejectDTO) {
+        var holder = productAuctionLookupHelper.findPendingProductAndAuction(productId);
+        Product product = holder.product();
+        Auction auction = holder.auction();
+        product.setStatus(ProductStatus.REJECTED);
+        product.setRejectionReason(rejectDTO.getRejectionReason()); // Lưu lý do từ chối
+        auction.setStatus(AuctionStatus.CANCELLED);
+        List<ProductImage> images = productImageRepository.findByProductIdOrderByDisplayOrderAsc(productId);
+        return productResponseHelper.build(product, auction, images);
     }
 
 }

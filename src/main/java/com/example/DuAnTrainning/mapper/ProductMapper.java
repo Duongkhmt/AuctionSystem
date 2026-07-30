@@ -33,6 +33,7 @@ public interface ProductMapper {
     @Mapping(target = "categoryId", source = "product.category.id")
     @Mapping(target = "status", source = "product.status")
     @Mapping(target = "createdAt", source = "product.createdAt")
+    @Mapping(target = "rejectionReason", source = "product.rejectionReason")
     @Mapping(target = "imageUrls", ignore = true)
     @Mapping(target = "images", ignore = true)
     @Mapping(target = "auctionId", source = "auction.id")
