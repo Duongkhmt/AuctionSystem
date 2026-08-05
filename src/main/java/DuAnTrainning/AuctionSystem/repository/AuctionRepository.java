@@ -20,6 +20,13 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
 
     List<Auction> findByProduct_IdIn(Collection<Long> productIds);
     void deleteByProduct_Id(Long productId);
+    // Tìm các phiên đang RUNNING (không thuộc BUY_NOW) đã hết thời gian endTime
+    List<Auction> findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(
+            AuctionStatus status,
+            AuctionType auctionType,
+            LocalDateTime now
+    );
+
 
     // 1. Bulk Update: SCHEDULED -> RUNNING khi đến giờ startTime & Sản phẩm đã APPROVED
     @Modifying

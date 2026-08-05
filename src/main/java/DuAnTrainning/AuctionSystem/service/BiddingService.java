@@ -100,9 +100,10 @@ public class BiddingService {
         // 1. Validate quy tắc luồng Mua Ngay
         bidValidator.validateBuyNow(bidder, auction);
 
-        // 2. Cập nhật giá & Chốt đơn sang ENDED
+        // 2. Cập nhật giá và nguời chiến thắng & Chốt đơn sang ENDED
         BigDecimal actualPrice = auction.getBuyNowPrice();
         auction.setCurrentPrice(actualPrice);
+        auction.setWinner(bidder);
         auction.setStatus(AuctionStatus.ENDED);
 
         // 3. Lưu bản ghi mua hàng thành công trực tiếp trong Service (y hệt phong cách placeBid)

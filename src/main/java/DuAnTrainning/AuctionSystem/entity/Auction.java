@@ -39,6 +39,10 @@ public class Auction {
     @Column(name = "current_price", nullable = false, precision = 15, scale = 2)
     private BigDecimal currentPrice;
 
+    @ManyToOne(fetch = FetchType.LAZY)
+    @JoinColumn(name = "winner_id")
+    private User winner;
+
     @Column(name = "start_time", nullable = false)
     private LocalDateTime startTime;
 

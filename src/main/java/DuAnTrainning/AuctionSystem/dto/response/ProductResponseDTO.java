@@ -17,7 +17,7 @@ public class ProductResponseDTO {
     private Long categoryId;
     private String title;
     private String description;
-    private Map<String, Object> attributes; // Không cần tự parse thủ công nữa
+    private Map<String, Object> attributes;
     private String status;
     private String rejectionReason;
     private List<ProductImageResponseDTO> images;
@@ -31,6 +31,8 @@ public class ProductResponseDTO {
     private BigDecimal bidStep;
     private BigDecimal reservePrice;
     private BigDecimal buyNowPrice;
+    private Long winnerId;
+    private String maskedWinnerName;
     private LocalDateTime startTime;
     private LocalDateTime endTime;
     private AuctionStatus auctionStatus;
