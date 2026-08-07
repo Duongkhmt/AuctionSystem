@@ -9,10 +9,11 @@ cơ chế chống bắn tỉa phút chót (Soft-Close Anti-Sniping), và tự đ
 
 ### Đối tượng sử dụng:
 **Bidder (Người tham gia đấu giá):** Xem thông tin sản phẩm, tham gia đặt giá cạnh tranh, cài đặt mức giá trần tự động đấu giá (Proxy Bid), 
-xem lịch sử thầu ẩn danh hoặc mua ngay sản phẩm với giá cố định (Buy Now).
+xem lịch sử thầu ẩn danh, mua ngay sản phẩm với giá cố định (Buy Now), quản lý danh sách sản phẩm trúng thầu, 
+chốt địa chỉ thanh toán Checkout và xác nhận đã nhận được hàng.
 
 **Seller (Người bán):** Tạo mới bài đăng sản phẩm kèm ảnh mây, chỉnh sửa nội dung/danh sách ảnh, 
-hủy phiên đấu giá trước giờ G hoặc đăng lại phiên đã hết hạn (Relist).
+hủy phiên đấu giá trước giờ G, đăng lại phiên đã hết hạn (Relist), xem danh sách đơn hàng đã bán và nhập mã vận đơn xuất hàng cho người mua.
 
 **Admin (Quản trị viên):** Xem danh sách các bài đăng sản phẩm chờ duyệt, thực hiện chấp thuận (Approve) 
 hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
@@ -92,18 +93,18 @@ Mã nguồn dự án được tổ chức theo cấu trúc sau:
 ```
 src/main/java/DuAnTrainning/AuctionSystem
 ├── config          # Cấu hình Spring Security và Cloudinary API Bean
-├── controller      # REST API Endpoints phân theo Admin, Seller, Public, Bidding, Category
+├── controller      # REST API Endpoints (Admin, Seller, Bidder, Public, AuctionBidding, Category)
 ├── dto
-│   ├── request     # Data Transfer Objects cho dữ liệu đầu vào kèm Bean Validation
-│   └── response    # Data Transfer Objects cho phản hồi API
-├── entity          # JPA Entities ánh xạ tới cơ sở dữ liệu PostgreSQL
-├── enums           # Các hằng số định kiểu (AuctionStatus, ProductStatus, AuctionType)
+│   ├── request     # DTO đầu vào (ProductRequestDTO, CheckoutRequestDTO, ShipOrderRequestDTO...)
+│   └── response    # DTO đầu ra (ProductResponseDTO, WonAuctionResponseDTO, SellerOrderResponseDTO...)
+├── entity          # JPA Entities (Product, Auction, Bid, Order, Payment, Category, User)
+├── enums           # Constants (AuctionStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus)
 ├── exception       # Xử lý ngoại lệ tập trung (ApplicationException, ErrorCode, GlobalExceptionHandler)
-├── mapper          # MapStruct Interfaces chuyển đổi dữ liệu giữa Entity và DTO
-├── repository      # Spring Data JPA Repositories và các câu lệnh JPQL / Bulk Update
-├── service         # Tầng xử lý logic nghiệp vụ chính và Robot Scheduler
-│   └── helper      # Helper components xử lý Proxy Bidding, Anti-Sniping, Step Calculation, Batching
-└── validator       # Kiểm tra các quy tắc nghiệp vụ (Business Rules Validation)
+├── mapper          # MapStruct Interfaces (ProductMapper, AuctionMapper, BidMapper, OrderMapper)
+├── repository      # Spring Data JPA Repositories (Product, Auction, Bid, Order, Payment)
+├── service         # Tầng nghiệp vụ chính (ProductService, BiddingService, OrderService, AuctionScheduler)
+│   └── helper      # Helpers (OrderResponseHelper, ProductResponseHelper, BidResponseHelper...)
+└── validator       # Validators (OrderValidator, BidValidator, AuctionValidator, ProductImageValidator)
 ```
 
 ---
@@ -144,38 +145,63 @@ tự động gia hạn thêm **+3 phút**.
 **Mua Ngay (Buy Now):** Đối với phiên có thiết lập giá mua ngay `buyNowPrice`, Bidder chấp nhận mức giá này có thể kích hoạt mua ngay. 
 Hệ thống sẽ lập tức chốt phiên (`ENDED`), ghi nhận chiến thắng cho Bidder và cập nhật giá hiện tại bằng giá mua ngay.
 
-### 4. Tái đăng bài (Relist Auction)
-- Nếu phiên đấu giá hết hạn mà không có người chiến thắng hoặc bị thất bại (`EXPIRED`), người bán có quyền tái đăng lại phiên (`relistAuction`). Hệ thống sẽ làm mới thời hạn đấu giá và đưa phiên trở lại trạng thái `RUNNING`.
+### 5. Quản lý Đơn hàng & Thanh toán Hậu Đấu Giá (Post-Auction Order Settlement)
+- **Tự động sinh đơn hàng:** Ngay khi phiên đấu giá hết giờ hoặc người mua thực hiện Mua Ngay, hệ thống (`AuctionScheduler` / `BiddingService.executeBuyNow`) tự động chốt người chiến thắng (`winner`) và tạo bản ghi Đơn hàng (`Order`) ở trạng thái **`UNPAID`**.
+- **Người mua Checkout:** Người mua vào danh sách đơn trúng thầu chọn đơn `UNPAID`, nhập địa chỉ nhận hàng, số điện thoại và chọn phương thức thanh toán. Hệ thống chuyển đơn sang **`PAID`** và sinh bản ghi Lịch sử thanh toán (`Payment`).
+- **Người bán Xuất hàng:** Người bán kiểm tra danh sách đơn bán được, nhập thông tin đơn vị vận chuyển (`courierName`) và mã vận đơn (`trackingNumber`) để xuất hàng. Hệ thống chuyển đơn sang **`SHIPPING`**.
+- **Người mua Nhận hàng:** Người mua nhận hàng đúng mô tả và bấm xác nhận. Hệ thống chuyển đơn sang **`COMPLETED`** và giải ngân hoàn tất giao dịch.
 
-### 5. Vòng đời Trạng thái (State Machines)
+### 6. Vòng đời Trạng thái (State Machines)
 - **ProductStatus:** `PENDING` ➔ `APPROVED` / `REJECTED`
 - **AuctionStatus:** `PENDING_APPROVAL` ➔ `SCHEDULED` / `RUNNING` ➔ `ENDED` / `EXPIRED` / `CANCELLED`
+- **OrderStatus:** `UNPAID` ➔ `PAID` ➔ `SHIPPING` ➔ `COMPLETED`
 
 ---
 
+
 # 7. REST API
 
-Danh sách toàn bộ các Endpoint được khai báo trong các Controller:
+Danh sách toàn bộ các Endpoint được phân nhóm theo đối tượng sử dụng:
 
+### 1. Public Marketplace & Categories
 | Method     | Path                                                 | Mô tả                                                    |
 |:-----------|:-----------------------------------------------------|:---------------------------------------------------------|
 | **GET**    | `/v1/categories`                                     | Lấy danh sách danh mục sản phẩm đang hoạt động           |
 | **GET**    | `/v1/products`                                       | Lấy danh sách sản phẩm công khai đã duyệt (`APPROVED`)   |
 | **GET**    | `/v1/products/{id}`                                  | Xem chi tiết thông tin sản phẩm và phiên đấu giá         |
+
+### 2. Seller Portal (Cổng cá nhân Người Bán)
+| Method     | Path                                                 | Mô tả                                                    |
+|:-----------|:-----------------------------------------------------|:---------------------------------------------------------|
 | **GET**    | `/v1/sellers/{sellerId}/products`                    | Lấy danh sách sản phẩm của một người bán                 |
 | **POST**   | `/v1/sellers/{sellerId}/products`                    | Tạo bài đăng sản phẩm và phiên đấu giá mới               |
 | **PUT**    | `/v1/sellers/{sellerId}/products/{id}`               | Cập nhật thông tin bài đăng và danh sách ảnh sản phẩm    |
 | **DELETE** | `/v1/sellers/{sellerId}/products/{id}`               | Xóa bài đăng sản phẩm                                    |
 | **PUT**    | `/v1/sellers/{sellerId}/products/{id}/cancel`        | Người bán chủ động hủy phiên đấu giá                     |
 | **POST**   | `/v1/sellers/{sellerId}/auctions/{auctionId}/relist` | Người bán đăng lại phiên đấu giá đã hết hạn (`EXPIRED`)  |
+| **GET**    | `/v1/sellers/{sellerId}/orders`                      | Người bán xem danh sách đơn hàng đã bán (Lọc status)     |
+| **PUT**    | `/v1/sellers/{sellerId}/orders/{orderId}/ship`       | Người bán nhập thông tin đơn vị vận chuyển & xuất hàng   |
+
+### 3. Bidder & Bidding Portal (Cổng Đấu Giá & Người Mua)
+| Method     | Path                                                       | Mô tả                                                    |
+|:-----------|:-----------------------------------------------------------|:---------------------------------------------------------|
+| **POST**   | `/v1/auctions/{auctionId}/bids`                            | Thực hiện đặt giá (Bid) mới                              |
+| **GET**    | `/v1/auctions/{auctionId}/bids`                            | Xem lịch sử đặt giá công khai (đã ẩn danh tên người đặt) |
+| **POST**   | `/v1/auctions/{auctionId}/buy-now`                         | Thực hiện mua ngay sản phẩm với giá cố định              |
+| **GET**    | `/v1/bidders/{bidderId}/won-auctions`                      | Người mua truy vấn danh sách sản phẩm đấu giá trúng thầu |
+| **POST**   | `/v1/bidders/{bidderId}/orders/{orderId}/checkout`         | Người mua chốt địa chỉ giao hàng & thanh toán đơn hàng   |
+| **PUT**    | `/v1/bidders/{bidderId}/orders/{orderId}/confirm-received` | Người mua xác nhận đã nhận hàng thành công         |
+
+### 4. Admin Moderation (Cổng Quản Trị Viên)
+| Method     | Path                                                 | Mô tả                                                    |
+|:-----------|:-----------------------------------------------------|:---------------------------------------------------------|
 | **GET**    | `/v1/admin/products/pending`                         | Lấy danh sách bài đăng chờ Admin kiểm duyệt (`PENDING`)  |
 | **PUT**    | `/v1/admin/products/{id}/approve`                    | Admin chấp thuận phê duyệt bài đăng sản phẩm             |
 | **PUT**    | `/v1/admin/products/{id}/reject`                     | Admin từ chối phê duyệt bài đăng sản phẩm kèm lý do      |
-| **POST**   | `/v1/auctions/{auctionId}/bids`                      | Thực hiện đặt giá (Bid) mới                              |
-| **GET**    | `/v1/auctions/{auctionId}/bids`                      | Xem lịch sử đặt giá công khai (đã ẩn danh tên người đặt) |
-| **POST**   | `/v1/auctions/{auctionId}/buy-now`                   | Thực hiện mua ngay sản phẩm với giá cố định              |
 
 ---
+
+
 
 # 8. Database Overview
 
@@ -218,9 +244,23 @@ Cấu trúc các bảng dữ liệu trong PostgreSQL và mối quan hệ giữa 
   - `idx_bid_auction_amount`: Composite Index trên `(auction_id, bid_amount DESC, created_at ASC)`
   - `idx_bid_auction_created`: Composite Index trên `(auction_id, created_at DESC)`
 
+### 7. `orders` (Đơn hàng trúng thầu hậu đấu giá)
+- **Quan hệ:**
+  - Many-to-One với `auctions` (`auction_id`)
+  - Many-to-One với `products` (`product_id`)
+  - Many-to-One với `users` (`buyer_id`, `seller_id`)
+  - One-to-Many với `payments`
+- **Các trường chính:** `id`, `auction_id`, `product_id`, `buyer_id`, `seller_id`, `winning_price`, `shipping_address`, `phone_number`, `courier_name`, `tracking_number`, `status` (`OrderStatus`).
+
+### 8. `payments` (Lịch sử thanh toán đơn hàng)
+- **Quan hệ:**
+  - Many-to-One với `orders` (`order_id`)
+- **Các trường chính:** `id`, `order_id`, `amount`, `payment_method` (`PaymentMethod`), `transaction_code`, `status` (`PaymentStatus`).
+
 ---
 
 # 9. Authentication & Authorization
+
 ....
 ---
 

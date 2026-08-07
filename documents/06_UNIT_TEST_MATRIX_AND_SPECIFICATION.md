@@ -12,11 +12,13 @@
 |:------------------------------------------------|:-------------:|:-------------------:|:--------------------:|:----------------:|
 | **A. BiddingService** (Đấu giá & Mua ngay)      |       9       |          9          |          0           |       100%       |
 | **B. ProductService** (Sản phẩm & Duyệt bài)    |       8       |          8          |          0           |       100%       |
-| **C. AuctionScheduler** (Tự động mở/đóng thầu)  |       4       |          0          |          4           |        0%        |
-| **D. CloudinaryService** (Quản lý ảnh)          |       4       |          0          |          4           |        0%        |
-| **E. Core Engine & Helpers** (`service/helper`) |      10       |          0          |          10          |        0%        |
-| **F. Validators** (`validator`)                 |       9       |          0          |          9           |        0%        |
-| **TỔNG CỘNG TOÀN DỰ ÁN**                        |    **44**     |        **17**       |        **27**        |    **38.6%**     |
+| **C. OrderService** (Đơn hàng & Thanh toán)     |       7       |          7          |          0           |       100%       |
+| **D. CategoryService** (Danh mục hoạt động)     |       1       |          1          |          0           |       100%       |
+| **E. AuctionScheduler** (Tự động mở/đóng thầu)  |       4       |          3          |          1           |       75%        |
+| **F. CloudinaryService** (Quản lý ảnh)          |       4       |          0          |          4           |        0%        |
+| **G. Core Engine & Helpers** (`service/helper`) |      10       |          5          |          5           |       50%        |
+| **H. Validators** (`validator`)                 |       9       |          0          |          9           |        0%        |
+| **TỔNG CỘNG TOÀN DỰ ÁN**                        |    **52**     |        **33**       |        **19**        |    **63.5%**     |
 
 ---
 

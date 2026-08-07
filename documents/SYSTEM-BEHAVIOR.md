@@ -264,3 +264,36 @@ Tự động kích hoạt trong các thao tác Tạo sản phẩm, Sửa ảnh v
 
 **Liên quan tới**  
 - [FUNCTIONAL-SPEC-SELLER.md](./FUNCTIONAL-SPEC-SELLER.md#dang-san-pham-moi-cau-hinh-phien-dau-gia)
+
+---
+
+### Vòng đời trạng thái Đơn Hàng hậu đấu giá (Post-Auction Order Lifecycle)
+
+**Bài toán kinh doanh**  
+Sau khi có người chiến thắng đấu giá hoặc mua ngay, quy trình hậu đấu giá cần quản lý khép kín qua các mốc trạng thái để bảo vệ quyền lợi tài chính và tài sản cho cả người mua lẫn người bán.
+
+**Mục tiêu**  
+Đảm bảo luồng chuyển dịch trạng thái Đơn hàng (`OrderStatus`) diễn ra đúng thứ tự, an toàn và có kiểm soát chặt chẽ.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Hệ thống tự động kích hoạt khi có Winner, Người mua Checkout, Người bán Ship hàng, và Người mua Xác nhận nhận hàng.
+
+**Luồng chuyển đổi trạng thái (State Machine Transitions)**  
+1. **Khởi tạo (`UNPAID`)**: Hệ thống `AuctionScheduler` hoặc `BiddingService.executeBuyNow` tự động sinh đơn hàng `Order` ở trạng thái `UNPAID` ngay khi xác định `winner`.
+2. **Thanh toán (`UNPAID` ➔ `PAID`)**: Người mua điền địa chỉ, SĐT và chọn phương thức thanh toán (`POST /v1/bidders/{bidderId}/orders/{orderId}/checkout`). Hệ thống ghi nhận `Payment` thành công và đổi đơn sang `PAID`.
+3. **Giao hàng (`PAID` ➔ `SHIPPING`)**: Người bán đóng gói, gửi bưu cục và nhập mã vận đơn (`PUT /v1/sellers/{sellerId}/orders/{orderId}/ship`). Hệ thống lưu tên nhà vận chuyển + mã vận đơn và đổi đơn sang `SHIPPING`.
+4. **Hoàn tất (`SHIPPING` ➔ `COMPLETED`)**: Người mua nhận được hàng đúng mô tả và bấm xác nhận (`PUT /v1/bidders/{bidderId}/orders/{orderId}/confirm-received`). Hệ thống đổi đơn sang `COMPLETED` và giải ngân cho Seller.
+
+**Bảng quy tắc chuyển đổi hợp lệ (`OrderStatus`)**:
+
+| Trạng thái hiện tại | Trạng thái tiếp theo | Người thực hiện | Điều kiện hợp lệ |
+| :--- | :--- | :--- | :--- |
+| *(Chưa có đơn)* | `UNPAID` | Hệ thống (Robot / BuyNow) | Hết giờ đấu giá có `winner` hoặc Người mua bấm `BuyNow` thành công |
+| `UNPAID` | `PAID` | Người mua (Buyer) | Nhập đủ địa chỉ, SĐT hợp lệ và chọn `PaymentMethod` |
+| `PAID` | `SHIPPING` | Người bán (Seller) | Nhập đủ `courierName` và `trackingNumber` bắt buộc |
+| `SHIPPING` | `COMPLETED` | Người mua (Buyer) | Kiểm tra hàng thành công và bấm nút xác nhận nhận hàng |
+
+**Quy tắc nghiệp vụ**  
+- [Không được phép xuất hàng khi đơn ở trạng thái UNPAID] — ném lỗi `CANNOT_SHIP_UNPAID_ORDER` để bảo vệ Seller.
+- [Không được phép xác nhận nhận hàng khi đơn chưa ở trạng thái SHIPPING] — ném lỗi `ORDER_NOT_IN_SHIPPING_STATE` để đảm bảo luồng bưu cục.
+

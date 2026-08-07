@@ -49,7 +49,18 @@ public enum ErrorCode {
     CANNOT_BID_OWN_PRODUCT(1401, "Người bán không được phép tự đặt giá sản phẩm của chính mình", HttpStatus.BAD_REQUEST),
     BID_AMOUNT_TOO_LOW(1402, "Mức giá đặt phải lớn hơn hoặc bằng giá hiện tại + bước giá tối thiểu", HttpStatus.BAD_REQUEST),
     ALREADY_HIGHEST_BIDDER(1403, "Bạn đang là người dẫn đầu giá cao nhất, không thể tự đè giá chính mình", HttpStatus.BAD_REQUEST),
-    MAX_AUTO_BID_TOO_LOW(1404, "Giá Auto-bid tối đa phải lớn hơn hoặc bằng giá đặt ban đầu", HttpStatus.BAD_REQUEST);
+    MAX_AUTO_BID_TOO_LOW(1404, "Giá Auto-bid tối đa phải lớn hơn hoặc bằng giá đặt ban đầu", HttpStatus.BAD_REQUEST),
+
+
+
+    // ===== ORDER & PAYMENT: 1500 - 1599 =====
+    ORDER_NOT_FOUND(1501, "Không tìm thấy thông tin đơn hàng trúng thầu", HttpStatus.NOT_FOUND),
+    ORDER_ALREADY_PAID(1502, "Đơn hàng này đã được thanh toán trước đó", HttpStatus.BAD_REQUEST),
+    CANNOT_SHIP_UNPAID_ORDER(1503, "Không thể giao hàng cho đơn chưa được người mua thanh toán", HttpStatus.BAD_REQUEST),
+    ORDER_NOT_IN_SHIPPING_STATE(1504, "Đơn hàng chưa ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
+    INVALID_PHONE_NUMBER(1505, "Số điện thoại giao hàng không hợp lệ", HttpStatus.BAD_REQUEST);
+
+
 
 
     ErrorCode(int code, String message, HttpStatusCode httpStatusCode) {

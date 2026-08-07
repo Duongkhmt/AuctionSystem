@@ -27,6 +27,9 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
             LocalDateTime now
     );
 
+    // Tìm các phiên đã ENDED và có Winner chính thức
+    List<Auction> findByStatusAndWinnerIsNotNull(AuctionStatus status);
+
 
     // 1. Bulk Update: SCHEDULED -> RUNNING khi đến giờ startTime & Sản phẩm đã APPROVED
     @Modifying

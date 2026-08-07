@@ -218,3 +218,28 @@ Người bán đối với các phiên đấu giá có trạng thái **HẾT H�
 
 **Liên quan tới**  
 - [SYSTEM-BEHAVIOR.md](./SYSTEM-BEHAVIOR.md#vong-doi-trang-thai-san-pham-va-phien-dau-gia)
+
+---
+
+### Xem đơn hàng bán được và Nhập thông tin xuất hàng (Ship Order)
+
+**Bài toán kinh doanh**  
+Sau khi phiên đấu giá thành công và Người mua đã trả tiền, Người bán cần biết thông tin người nhận (Tên, SĐT, Địa chỉ) để đóng gói sản phẩm và mang ra bưu cục gửi hàng, đồng thời nhập lại Mã vận đơn tra cứu để cập nhật trạng thái đơn cho Người mua theo dõi.
+
+**Mục tiêu**  
+Cung cấp công cụ quản lý bán hàng và xuất vận đơn chuyên nghiệp cho Người bán.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Người bán (Seller) có sản phẩm đã đấu giá thành công và đã được trả tiền (`PAID`).
+
+**Luồng thực hiện**  
+1. Người bán vào mục "Đơn hàng đã bán" (`GET /v1/sellers/{sellerId}/orders`).
+2. Hệ thống hiển thị danh sách các đơn hàng đã bán (hỗ trợ lọc theo trạng thái `?status=PAID`).
+3. Người bán kiểm tra thông tin địa chỉ và SĐT giao hàng của Người mua.
+4. Sau khi gửi bưu cục, Người bán nhập Tên đơn vị vận chuyển (`courierName`) và Mã vận đơn (`trackingNumber`), bấm "Xuất hàng" (`PUT /v1/sellers/{sellerId}/orders/{orderId}/ship`).
+5. Hệ thống validate bắt buộc nhập mã vận đơn, cập nhật thông tin vận chuyển và đổi trạng thái đơn sang **`SHIPPING`**.
+
+**Quy tắc nghiệp vụ**  
+- [Chỉ cho phép xuất hàng khi đơn hàng ở trạng thái PAID] — nếu Người mua chưa trả tiền (`UNPAID`), hệ thống chặn từ chối xuất hàng để bảo vệ tài sản của Seller.
+- [Bắt buộc nhập Tên đơn vị vận chuyển và Mã vận đơn] — đảm bảo tính minh bạch để Người mua tra cứu được hành trình đơn hàng.
+

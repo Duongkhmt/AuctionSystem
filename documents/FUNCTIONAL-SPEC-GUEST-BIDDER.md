@@ -213,3 +213,50 @@ Tất cả người dùng khi xem thông tin phiên đấu giá.
 
 **Liên quan tới**  
 - [SYSTEM-BEHAVIOR.md](./SYSTEM-BEHAVIOR.md#quy-tac-bao-mat-va-ma-hoa-an-danh-nguoi-tham-gia)
+
+---
+
+### Xem sản phẩm trúng thầu và Thanh toán đơn hàng (Checkout)
+
+**Bài toán kinh doanh**  
+Sau khi thắng phiên đấu giá hoặc thực hiện Mua Ngay, người mua cần một nơi tập trung để quản lý các sản phẩm mình đã trúng thầu, thực hiện điền thông tin địa chỉ nhận hàng, số điện thoại và hoàn tất thủ tục thanh toán để nhận hàng.
+
+**Mục tiêu**  
+Cung cấp cổng xem danh sách đơn hàng trúng thầu và luồng thanh toán Checkout an toàn, minh bạch cho Người mua.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Người mua (Bidder) đã chiến thắng ở ít nhất một phiên đấu giá.
+
+**Luồng thực hiện**  
+1. Người mua vào mục "Sản phẩm trúng thầu" (`GET /v1/bidders/{bidderId}/won-auctions`).
+2. Hệ thống hiển thị danh sách đơn hàng với trạng thái tương ứng (`UNPAID`, `PAID`, `SHIPPING`, `COMPLETED`).
+3. Đối với đơn hàng `UNPAID`, Người mua bấm "Thanh toán Checkout" (`POST /v1/bidders/{bidderId}/orders/{orderId}/checkout`).
+4. Người mua điền Địa chỉ giao hàng, Số điện thoại và chọn Phương thức thanh toán (VNPAY, Thẻ ngân hàng...).
+5. Hệ thống validate thông tin, lưu dữ liệu giao hàng, tạo bản ghi Thanh toán (`Payment`) và chuyển trạng thái đơn sang **`PAID`**.
+
+**Quy tắc nghiệp vụ**  
+- [Chỉ chính chủ Người mua trúng thầu mới được Checkout] — tránh việc tài khoản khác can thiệp hoặc thanh toán thay bất hợp pháp.
+- [Đơn hàng chỉ được Checkout khi ở trạng thái UNPAID] — nếu đơn đã trả tiền trước đó (`PAID`), hệ thống từ chối giao dịch.
+
+---
+
+### Xác nhận đã nhận được hàng (Confirm Received)
+
+**Bài toán kinh doanh**  
+Khi sản phẩm đang được vận chuyển tới tay, người mua cần có nút bấm xác nhận đã nhận được hàng đúng mô tả để hệ thống hoàn tất chu trình và giải ngân tiền cho người bán.
+
+**Mục tiêu**  
+Bảo vệ dòng tiền và hoàn tất giao dịch khép kín phía Người mua.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Người mua khi đơn hàng đang ở trạng thái **`SHIPPING`**.
+
+**Luồng thực hiện**  
+1. Người mua vào danh sách đơn hàng, chọn đơn ở trạng thái đang giao (`SHIPPING`).
+2. Người mua kiểm tra hàng hóa nhận được và bấm nút "Tôi đã nhận được hàng" (`PUT /v1/bidders/{bidderId}/orders/{orderId}/confirm-received`).
+3. Hệ thống validate trạng thái bắt buộc phải là `SHIPPING`.
+4. Hệ thống cập nhật trạng thái đơn hàng sang **`COMPLETED`** và giải ngân tiền cho Seller.
+
+**Quy tắc nghiệp vụ**  
+- [Chỉ cho phép xác nhận khi đơn ở trạng thái SHIPPING] — không thể bấm xác nhận khi hàng chưa được Seller gửi đi.
+

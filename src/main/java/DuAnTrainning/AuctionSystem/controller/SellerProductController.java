@@ -2,7 +2,11 @@ package DuAnTrainning.AuctionSystem.controller;
 
 import DuAnTrainning.AuctionSystem.dto.request.ProductRequestDTO;
 import DuAnTrainning.AuctionSystem.dto.request.ProductUpdateRequestDTO;
+import DuAnTrainning.AuctionSystem.dto.request.ShipOrderRequestDTO;
 import DuAnTrainning.AuctionSystem.dto.response.ProductResponseDTO;
+import DuAnTrainning.AuctionSystem.dto.response.SellerOrderResponseDTO;
+import DuAnTrainning.AuctionSystem.enums.OrderStatus;
+import DuAnTrainning.AuctionSystem.service.OrderService;
 import DuAnTrainning.AuctionSystem.service.ProductService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -16,99 +20,91 @@ import java.util.List;
  * Controller quản lý các Endpoint thao tác bài đăng và phiên đấu giá của Người Bán (Seller).
  */
 @RestController
-@RequestMapping("/v1/sellers/{sellerId}/products")
+@RequestMapping("/v1/sellers/{sellerId}")
 @RequiredArgsConstructor
 public class SellerProductController {
 
     private final ProductService productService;
+    private final OrderService orderService;
+
+    // =========================================================================
+    // 1. NHÓM API SẢN PHẨM & PHIÊN ĐẤU GIÁ (PRODUCTS)
+
 
     // =========================================================================
     // 1. API XEM DANH SÁCH SẢN PHẨM CÁ NHÂN CỦA NGƯỜI BÁN
-    // GET /v1/sellers/{sellerId}/products
-    // =========================================================================
-    @GetMapping
-    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts(
-            @PathVariable Long sellerId
-    ) {
-        // 1. Gọi Service lấy toàn bộ danh sách sản phẩm do chính Seller này đăng bán
-        List<ProductResponseDTO> products = productService.getProductsBySellerId(sellerId);
-        // 2. Trả về kết quả danh sách với HTTP Status Code 200 OK
-        return ResponseEntity.ok(products);
+    @GetMapping("/products")
+    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts(@PathVariable Long sellerId) {
+        return ResponseEntity.ok(productService.getProductsBySellerId(sellerId));
     }
 
     // =========================================================================
     // 2. API NGƯỜI BÁN TẠO BÀI ĐĂNG SẢN PHẨM MỚI (CHỜ ADMIN DUYỆT)
-    // POST /v1/sellers/{sellerId}/products
-    // =========================================================================
-    @PostMapping
+    @PostMapping("/products")
     public ResponseEntity<ProductResponseDTO> createProduct(
             @PathVariable Long sellerId,
             @Valid @ModelAttribute ProductRequestDTO requestDTO
     ) {
-        // 1. Gọi Service upload ảnh Cloudinary, tạo Product và Auction ở trạng thái chờ duyệt PENDING
-        ProductResponseDTO response = productService.createProduct(sellerId, requestDTO);
-        // 2. Trả về thông tin bài vừa tạo với HTTP Status Code 201 CREATED
-        return ResponseEntity.status(HttpStatus.CREATED).body(response);
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createProduct(sellerId, requestDTO));
     }
 
     // =========================================================================
     // 3. API NGƯỜI BÁN CHỈNH SỬA SẢN PHẨM (KHI CHƯA CHẠY HOẶC CHƯA BẮT ĐẦU)
-    // PUT /v1/sellers/{sellerId}/products/{id}
-    // =========================================================================
-    @PutMapping("/{id}")
+    @PutMapping("/products/{id}")
     public ResponseEntity<ProductResponseDTO> updateProduct(
             @PathVariable Long sellerId,
             @PathVariable Long id,
             @Valid @ModelAttribute ProductUpdateRequestDTO requestDTO
     ) {
-        // 1. Gọi Service kiểm tra chính chủ Seller, validate cấu hình và cập nhật thông tin bài đăng
-        ProductResponseDTO response = productService.updateProduct(sellerId, id, requestDTO);
-        // 2. Trả về kết quả sau cập nhật với HTTP Status Code 200 OK
-        return ResponseEntity.ok(response);
+        return ResponseEntity.ok(productService.updateProduct(sellerId, id, requestDTO));
     }
 
     // =========================================================================
     // 4. API NGƯỜI BÁN XÓA VĨNH VIỄN SẢN PHẨM (KHI CHƯA DIỄN RA)
-    // DELETE /v1/sellers/{sellerId}/products/{id}
-    // =========================================================================
-    @DeleteMapping("/{id}")
-    public ResponseEntity<Void> deleteProduct(
-            @PathVariable Long sellerId,
-            @PathVariable Long id
-    ) {
-        // 1. Gọi Service dọn dẹp ảnh trên Cloudinary và xóa dữ liệu Product/Auction trong DB
+    @DeleteMapping("/products/{id}")
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long sellerId, @PathVariable Long id) {
         productService.deleteProduct(sellerId, id);
-        // 2. Trả về phản hồi rỗng với HTTP Status Code 24 NO CONTENT
         return ResponseEntity.noContent().build();
     }
 
+
     // =========================================================================
     // 5. API NGƯỜI BÁN CHỦ ĐỘNG HỦY PHIÊN BÀI ĐĂNG (KHI CHƯA CÓ AI BID)
-    // PUT /v1/sellers/{sellerId}/products/{id}/cancel
-    // =========================================================================
-    @PutMapping("/{id}/cancel")
-    public ResponseEntity<ProductResponseDTO> cancelAuction(
-            @PathVariable Long sellerId,
-            @PathVariable Long id
-    ) {
-        // 1. Gọi Service kiểm tra chính chủ và chuyển trạng thái phiên sang CANCELLED
-        ProductResponseDTO response = productService.cancelAuction(sellerId, id);
-        // 2. Trả về kết quả hủy thành công với HTTP Status Code 200 OK
-        return ResponseEntity.ok(response);
+    @PutMapping("/products/{id}/cancel")
+    public ResponseEntity<ProductResponseDTO> cancelAuction(@PathVariable Long sellerId, @PathVariable Long id) {
+        return ResponseEntity.ok(productService.cancelAuction(sellerId, id));
     }
+
 
     // =========================================================================
     // 6. API NGƯỜI BÁN "ĐĂNG LẠI" (RELIST) SẢN PHẨM HẾT HẠN 30 NGÀY (EXPIRED)
-    // POST /v1/sellers/{sellerId}/products/{auctionId}/relist
-    // =========================================================================
-    @PostMapping("/{auctionId}/relist")
-    public ResponseEntity<ProductResponseDTO> relist(
-            @PathVariable Long sellerId,
-            @PathVariable Long auctionId
-    ) {
-        // 1. Gọi Service kiểm tra trạng thái EXPIRED và khôi phục RUNNING công khai 30 ngày mới
-        ProductResponseDTO response = productService.relistAuction(sellerId, auctionId);
-        // 2. Trả về kết quả đăng lại thành công với HTTP Status Code 200 OK
-        return ResponseEntity.ok(response);
+    @PostMapping("/products/{auctionId}/relist")
+    public ResponseEntity<ProductResponseDTO> relist(@PathVariable Long sellerId, @PathVariable Long auctionId) {
+        return ResponseEntity.ok(productService.relistAuction(sellerId, auctionId));
     }
+
+    // =========================================================================
+    // 2. NHÓM API ĐƠN HÀNG HẬU ĐẤU GIÁ (ORDERS)
+
+    // =========================================================================
+    // API 3: Người Bán xem danh sách đơn hàng đã bán
+    @GetMapping("/orders")
+    public ResponseEntity<List<SellerOrderResponseDTO>> getSellerOrders(
+            @PathVariable Long sellerId,
+            @RequestParam(required = false) OrderStatus status
+    ) {
+        return ResponseEntity.ok(orderService.getSellerOrders(sellerId, status));
+    }
+
+
+    // API 4: Người Bán bấm nút xuất hàng (PAID -> SHIPPING)
+    @PutMapping("/orders/{orderId}/ship")
+    public ResponseEntity<SellerOrderResponseDTO> shipOrder(
+            @PathVariable Long sellerId,
+            @PathVariable Long orderId,
+            @Valid @RequestBody ShipOrderRequestDTO requestDTO
+    ) {
+        return ResponseEntity.ok(orderService.shipOrder(orderId, sellerId, requestDTO));
+    }
+
 }

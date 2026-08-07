@@ -5,13 +5,16 @@ import DuAnTrainning.AuctionSystem.dto.response.BidHistoryResponseDTO;
 import DuAnTrainning.AuctionSystem.dto.response.BidResponseDTO;
 import DuAnTrainning.AuctionSystem.entity.Auction;
 import DuAnTrainning.AuctionSystem.entity.Bid;
+import DuAnTrainning.AuctionSystem.entity.Order;
 import DuAnTrainning.AuctionSystem.entity.User;
 import DuAnTrainning.AuctionSystem.enums.AuctionStatus;
 import DuAnTrainning.AuctionSystem.exception.ApplicationException;
 import DuAnTrainning.AuctionSystem.exception.ErrorCode;
 import DuAnTrainning.AuctionSystem.mapper.BidMapper;
+import DuAnTrainning.AuctionSystem.mapper.OrderMapper;
 import DuAnTrainning.AuctionSystem.repository.AuctionRepository;
 import DuAnTrainning.AuctionSystem.repository.BidRepository;
+import DuAnTrainning.AuctionSystem.repository.OrderRepository;
 import DuAnTrainning.AuctionSystem.repository.UserRepository;
 import DuAnTrainning.AuctionSystem.service.helper.BidResponseHelper;
 import DuAnTrainning.AuctionSystem.service.helper.ProxyBiddingEngineHelper;
@@ -34,6 +37,9 @@ public class BiddingService {
     private final UserRepository userRepository;
     private final BidValidator bidValidator;
     private final BidMapper bidMapper;
+    private final OrderRepository orderRepository;
+    private final OrderMapper orderMapper;
+
     private final ProxyBiddingEngineHelper proxyBiddingEngineHelper;
     private final BidResponseHelper bidResponseHelper;
     private static final int ANTI_SNIPING_WINDOW_MINUTES = 3;
@@ -123,7 +129,7 @@ public class BiddingService {
         auction.setWinner(bidder);
         auction.setStatus(AuctionStatus.ENDED);
 
-        // 6. Khởi tạo bản ghi Bid mua hàng thành công duy nhất
+        // 6. Lưu bản ghi Bid thắng cuộc duy nhất
         Bid winningBid = new Bid();
         winningBid.setAuction(auction);
         winningBid.setBidder(bidder);
@@ -133,7 +139,13 @@ public class BiddingService {
         // 7. Lưu bản ghi Bid thắng cuộc xuống Database
         Bid savedBid = bidRepository.save(winningBid);
 
-        // 8. Gọi Helper đóng gói dữ liệu phản hồi trả về cho Frontend
+        // 8. TỰ ĐỘNG SINH ĐƠN HÀNG HẬU MUA NGAY (TRẠNG THÁI UNPAID))!
+        if (!orderRepository.existsByAuction_Id(auction.getId())) {
+            Order order = orderMapper.toEntity(auction, bidder, actualPrice);
+            orderRepository.save(order);
+        }
+
+        // 9. Gọi Helper đóng gói dữ liệu phản hồi trả về cho Frontend
         return bidResponseHelper.buildResponse(auction, savedBid, false);
     }
 

@@ -10,8 +10,10 @@ import DuAnTrainning.AuctionSystem.enums.AuctionStatus;
 import DuAnTrainning.AuctionSystem.exception.ApplicationException;
 import DuAnTrainning.AuctionSystem.exception.ErrorCode;
 import DuAnTrainning.AuctionSystem.mapper.BidMapper;
+import DuAnTrainning.AuctionSystem.mapper.OrderMapper;
 import DuAnTrainning.AuctionSystem.repository.AuctionRepository;
 import DuAnTrainning.AuctionSystem.repository.BidRepository;
+import DuAnTrainning.AuctionSystem.repository.OrderRepository;
 import DuAnTrainning.AuctionSystem.repository.UserRepository;
 import DuAnTrainning.AuctionSystem.service.helper.BidResponseHelper;
 import DuAnTrainning.AuctionSystem.service.helper.ProxyBiddingEngineHelper;
@@ -40,43 +42,61 @@ import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
-@ExtendWith(MockitoExtension.class)
+/**
+ * Class kiểm thử tự động (Unit Test) dành riêng cho BiddingService.
+ * Sử dụng JUnit 5 kết hợp Mockito extension để cô lập 100% các lớp phụ thuộc bên ngoài (Repositories, Helpers, Validators).
+ */
+@ExtendWith(MockitoExtension.class) // Tự động khởi tạo và inject các đối tượng Mock trong JUnit 5 mà không cần load Spring Context
 @DisplayName("Unit Test Cho Class BiddingService")
 class BiddingServiceTest {
 
+    // ===== KHAI BÁO CÁC ĐỐI TƯỢNG ĐÓNG THẾ (MOCK OBJECTS) =====
     @Mock
-    private AuctionRepository auctionRepository;
+    private AuctionRepository auctionRepository; // Giả lập truy vấn dữ liệu phiên đấu giá
 
     @Mock
-    private BidRepository bidRepository;
+    private BidRepository bidRepository; // Giả lập truy vấn và lưu bản ghi lịch sử thầu
 
     @Mock
-    private UserRepository userRepository;
+    private UserRepository userRepository; // Giả lập truy vấn người dùng (Bidder/Seller)
 
     @Mock
-    private BidValidator bidValidator;
+    private BidValidator bidValidator; // Giả lập bộ kiểm tra quy tắc ràng buộc giá thầu
 
     @Mock
-    private BidMapper bidMapper;
+    private BidMapper bidMapper; // Giả lập Mapper chuyển đổi Entity sang DTO
 
     @Mock
-    private ProxyBiddingEngineHelper proxyBiddingEngineHelper;
+    private OrderRepository orderRepository; // Giả lập lưu đơn hàng trúng thầu
 
     @Mock
-    private BidResponseHelper bidResponseHelper;
+    private OrderMapper orderMapper; // Giả lập Mapper chuyển sang DTO đơn hàng
 
+    @Mock
+    private ProxyBiddingEngineHelper proxyBiddingEngineHelper; // Giả lập động cơ tự động nhảy giá Proxy Bidding
+
+    @Mock
+    private BidResponseHelper bidResponseHelper; // Giả lập đóng gói DTO phản hồi
+
+    // ===== ĐỐI TƯỢNG CẦN KIỂM THỬ THẬT (CLASS UNDER TEST) =====
     @InjectMocks
-    private BiddingService biddingService;
+    private BiddingService biddingService; // Khởi tạo BiddingService thật và tự động tiêm các đối tượng @Mock ở trên vào constructor
 
+    // Dữ liệu mẫu dùng chung cho các test case
     private User sampleBidder;
     private Auction sampleAuction;
 
+    /**
+     * Hàm chuẩn bị dữ liệu giả lập được chạy tự động TRƯỚC MỖI test method.
+     */
     @BeforeEach
     void setUp() {
+        // Tạo đối tượng Người đấu giá giả lập (User ID = 100)
         sampleBidder = new User();
         sampleBidder.setId(100L);
         sampleBidder.setEmail("bidder@example.com");
 
+        // Tạo đối tượng Phiên đấu giá giả lập (Auction ID = 1, giá hiện tại = 100k, giá mua ngay = 500k, thời gian còn 2 tiếng)
         sampleAuction = new Auction();
         sampleAuction.setId(1L);
         sampleAuction.setStatus(AuctionStatus.RUNNING);
@@ -86,7 +106,7 @@ class BiddingServiceTest {
     }
 
     // =========================================================================
-    // 1. UNIT TEST CHO PHƯƠNG THỨC placeBid()
+    // 1. UNIT TEST CHO PHƯƠNG THỨC placeBid() - ĐẶT GIÁ THẦU
     // =========================================================================
     @Nested
     @DisplayName("Nghiệp vụ Đặt Giá Thầu (placeBid)")
@@ -95,28 +115,30 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Đặt thầu thất bại - Người dùng không tồn tại trong hệ thống")
         void placeBid_UserNotFound_ShouldThrowException() {
-            // Given
+            // 1. GIVEN (Kịch bản giả lập): Người dùng ID 99 không có trong Database
             Long bidderId = 99L;
             Long auctionId = 1L;
             BidRequestDTO requestDTO = new BidRequestDTO();
             requestDTO.setBidAmount(BigDecimal.valueOf(150000));
 
+            // Định nghĩa hành vi: Khi gọi userRepository.findById(99L) -> Trả về Optional rỗng
             given(userRepository.findById(bidderId)).willReturn(Optional.empty());
 
-            // When & Then
+            // 2. WHEN & THEN (Thực thi & Kiểm tra): Gọi hàm placeBid và bắt Exception ném ra
             assertThatThrownBy(() -> biddingService.placeBid(bidderId, auctionId, requestDTO))
-                    .isInstanceOf(ApplicationException.class)
+                    .isInstanceOf(ApplicationException.class) // Kiểm tra ngoại lệ đúng loại ApplicationException
                     .extracting("errorCode")
-                    .isEqualTo(ErrorCode.USER_NOT_FOUND);
+                    .isEqualTo(ErrorCode.USER_NOT_FOUND); // Kiểm tra mã lỗi chính xác là USER_NOT_FOUND
 
+            // 3. VERIFY (Xác minh tương tác): Khẳng định hệ thống dừng lại ngay, không bao giờ gọi tới auctionRepository hay engine
             then(auctionRepository).should(never()).findById(any());
             then(proxyBiddingEngineHelper).should(never()).processProxyBidding(any(), any(), any(), any());
         }
 
         @Test
-        @DisplayName("Đặt thầu thất bại - Phiên đấu giá không tồn tại (Tìm theo cả Auction ID và Product ID đều rỗng)")
+        @DisplayName("Đặt thầu thất bại - Phiên đấu giá không tồn tại (Tìm cả Auction ID và Product ID đều rỗng)")
         void placeBid_AuctionNotFound_ShouldThrowException() {
-            // Given
+            // 1. GIVEN: Người dùng tồn tại nhưng Phiên đấu giá ID 999 không có trong Database
             Long bidderId = 100L;
             Long auctionId = 999L;
             BidRequestDTO requestDTO = new BidRequestDTO();
@@ -126,19 +148,20 @@ class BiddingServiceTest {
             given(auctionRepository.findById(auctionId)).willReturn(Optional.empty());
             given(auctionRepository.findByProduct_Id(auctionId)).willReturn(Optional.empty());
 
-            // When & Then
+            // 2. WHEN & THEN: Thực thi và xác nhận ném lỗi AUCTION_NOT_FOUND
             assertThatThrownBy(() -> biddingService.placeBid(bidderId, auctionId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.AUCTION_NOT_FOUND);
 
+            // 3. VERIFY: Khẳng định không thực hiện bước validateBid
             then(bidValidator).should(never()).validateBid(any(), any(), any(), any());
         }
 
         @Test
         @DisplayName("Đặt thầu thành công bình thường - Không kích hoạt Soft-Close Anti-sniping")
         void placeBid_Success_WithoutAntiSnipingExtension() {
-            // Given
+            // 1. GIVEN: Dữ liệu hợp lệ, phiên thầu còn 2 tiếng nữa mới hết hạn (ngoài cửa sổ 3 phút cuối)
             Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal bidAmount = BigDecimal.valueOf(150000);
@@ -148,8 +171,9 @@ class BiddingServiceTest {
             given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
             given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auctionId))
-                    .willReturn(Optional.empty());
+                    .willReturn(Optional.empty()); // Chưa có lượt bid nào trước đó
 
+            // Giả lập kết quả trả về từ động cơ Proxy Bidding Engine
             Bid winningBid = new Bid();
             winningBid.setBidAmount(bidAmount);
             ProxyBiddingResult proxyResult = new ProxyBiddingResult(List.of(winningBid), winningBid, bidAmount);
@@ -157,17 +181,19 @@ class BiddingServiceTest {
             given(proxyBiddingEngineHelper.processProxyBidding(sampleAuction, sampleBidder, bidAmount, null))
                     .willReturn(proxyResult);
 
+            // Giả lập Helper trả về DTO kết quả
             BidResponseDTO expectedResponse = mock(BidResponseDTO.class);
             given(bidResponseHelper.buildResponse(sampleAuction, winningBid, false))
                     .willReturn(expectedResponse);
 
-            // When
+            // 2. WHEN: Gọi hàm placeBid thật của BiddingService
             BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
 
-            // Then
+            // 3. THEN: Kiểm tra giá mới được cập nhật đúng và trả về DTO như kỳ vọng
             assertThat(actualResponse).isEqualTo(expectedResponse);
             assertThat(sampleAuction.getCurrentPrice()).isEqualTo(bidAmount);
 
+            // Xác minh các thao tác lưu dữ liệu được thực thi đúng 1 lần
             then(bidValidator).should(times(1)).validateBid(sampleBidder, sampleAuction, Optional.empty(), requestDTO);
             then(auctionRepository).should(times(1)).save(sampleAuction);
             then(bidRepository).should(times(1)).saveAll(proxyResult.bidsToSave());
@@ -177,15 +203,14 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Đặt thầu thành công cận giờ kết thúc - Kích hoạt Soft-Close Anti-sniping gia hạn thêm 3 phút")
         void placeBid_Success_WithAntiSnipingExtension() {
-            // Given
+            // 1. GIVEN: Thời gian kết thúc nằm trong 3 phút cuối (chỉ còn 2 phút nữa)
             Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal bidAmount = BigDecimal.valueOf(150000);
             BidRequestDTO requestDTO = new BidRequestDTO();
             requestDTO.setBidAmount(bidAmount);
 
-            // Thiết lập thời gian kết thúc nằm trong cửa sổ 3 phút cuối
-            LocalDateTime originalEndTime = LocalDateTime.now().plusMinutes(2);
+            LocalDateTime originalEndTime = LocalDateTime.now().plusMinutes(2); // Còn 2 phút
             sampleAuction.setEndTime(originalEndTime);
 
             given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
@@ -204,20 +229,19 @@ class BiddingServiceTest {
             given(bidResponseHelper.buildResponse(eq(sampleAuction), eq(winningBid), eq(true)))
                     .willReturn(expectedResponse);
 
-            // When
+            // 2. WHEN: Gọi hàm placeBid
             BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
 
-            // Then
+            // 3. THEN: Kiểm tra thời gian kết thúc đã tự động được cộng thêm 3 phút (Soft-Close)
             assertThat(actualResponse).isEqualTo(expectedResponse);
-            // Kiểm tra thời gian kết thúc đã được cộng thêm 3 phút
-            assertThat(sampleAuction.getEndTime()).isAfter(originalEndTime);
+            assertThat(sampleAuction.getEndTime()).isAfter(originalEndTime); // Thời gian kết thúc mới phải lớn hơn mốc ban đầu
 
             then(bidResponseHelper).should(times(1)).buildResponse(sampleAuction, winningBid, true);
         }
     }
 
     // =========================================================================
-    // 2. UNIT TEST CHO PHƯƠNG THỨC getAuctionBidHistory()
+    // 2. UNIT TEST CHO PHƯƠNG THỨC getAuctionBidHistory() - XEM LỊCH SỬ THẦU
     // =========================================================================
     @Nested
     @DisplayName("Nghiệp vụ Xem Lịch Sử Đấu Giá (getAuctionBidHistory)")
@@ -226,16 +250,17 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Lấy lịch sử thầu thất bại - Phiên đấu giá không tồn tại")
         void getAuctionBidHistory_AuctionNotFound_ShouldThrowException() {
-            // Given
+            // 1. GIVEN: Auction ID 999 không tồn tại
             Long auctionId = 999L;
             given(auctionRepository.existsById(auctionId)).willReturn(false);
 
-            // When & Then
+            // 2. WHEN & THEN: Thực thi và bắt lỗi AUCTION_NOT_FOUND
             assertThatThrownBy(() -> biddingService.getAuctionBidHistory(auctionId))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.AUCTION_NOT_FOUND);
 
+            // 3. VERIFY: Khẳng định không gọi truy vấn tìm lịch sử Bid khi phiên thầu không tồn tại
             then(bidRepository).should(never()).findByAuctionIdOrderByCreatedAtDesc(auctionId);
             then(bidMapper).should(never()).toHistoryDTOList(any());
         }
@@ -243,7 +268,7 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Lấy lịch sử thầu thành công - Trả về danh sách DTO")
         void getAuctionBidHistory_Success_ShouldReturnHistoryList() {
-            // Given
+            // 1. GIVEN: Auction ID 1 tồn tại và có 1 bản ghi Bid trong DB
             Long auctionId = 1L;
             given(auctionRepository.existsById(auctionId)).willReturn(true);
 
@@ -258,10 +283,10 @@ class BiddingServiceTest {
             BidHistoryResponseDTO mockDto = mock(BidHistoryResponseDTO.class);
             given(bidMapper.toHistoryDTOList(mockBidList)).willReturn(List.of(mockDto));
 
-            // When
+            // 2. WHEN: Gọi hàm lấy lịch sử thầu
             List<BidHistoryResponseDTO> result = biddingService.getAuctionBidHistory(auctionId);
 
-            // Then
+            // 3. THEN: Kiểm tra kết quả trả về không null và có đúng 1 phần tử DTO
             assertThat(result).isNotNull().hasSize(1);
             then(auctionRepository).should(times(1)).existsById(auctionId);
             then(bidRepository).should(times(1)).findByAuctionIdOrderByCreatedAtDesc(auctionId);
@@ -270,7 +295,7 @@ class BiddingServiceTest {
     }
 
     // =========================================================================
-    // 3. UNIT TEST CHO PHƯƠNG THỨC executeBuyNow()
+    // 3. UNIT TEST CHO PHƯƠNG THỨC executeBuyNow() - MUA NGAY GIÁ CỐ ĐỊNH
     // =========================================================================
     @Nested
     @DisplayName("Nghiệp vụ Mua Ngay Giá Cố Định (executeBuyNow)")
@@ -279,13 +304,13 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Mua ngay thất bại - Người dùng không tồn tại")
         void executeBuyNow_UserNotFound_ShouldThrowException() {
-            // Given
+            // 1. GIVEN: Bidder ID 99 không tồn tại
             Long bidderId = 99L;
             Long auctionId = 1L;
 
             given(userRepository.findById(bidderId)).willReturn(Optional.empty());
 
-            // When & Then
+            // 2. WHEN & THEN: Bắt lỗi USER_NOT_FOUND
             assertThatThrownBy(() -> biddingService.executeBuyNow(bidderId, auctionId))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
@@ -298,14 +323,14 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Mua ngay thất bại - Phiên đấu giá không tồn tại")
         void executeBuyNow_AuctionNotFound_ShouldThrowException() {
-            // Given
+            // 1. GIVEN: Auction ID 999 không tồn tại
             Long bidderId = 100L;
             Long auctionId = 999L;
 
             given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.empty());
 
-            // When & Then
+            // 2. WHEN & THEN: Bắt lỗi AUCTION_NOT_FOUND
             assertThatThrownBy(() -> biddingService.executeBuyNow(bidderId, auctionId))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
@@ -317,7 +342,7 @@ class BiddingServiceTest {
         @Test
         @DisplayName("Mua ngay thành công - Đổi trạng thái sang ENDED và lưu bản ghi chiến thắng")
         void executeBuyNow_Success_ShouldCloseAuctionAndSaveWinningBid() {
-            // Given
+            // 1. GIVEN: Thông tin mua ngay hợp lệ với giá buyNowPrice = 500k
             Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal buyNowPrice = BigDecimal.valueOf(500000);
@@ -337,16 +362,16 @@ class BiddingServiceTest {
             given(bidResponseHelper.buildResponse(sampleAuction, savedBid, false))
                     .willReturn(expectedResponse);
 
-            // When
+            // 2. WHEN: Gọi phương thức mua ngay
             BidResponseDTO actualResponse = biddingService.executeBuyNow(bidderId, auctionId);
 
-            // Then
+            // 3. THEN: Kiểm tra các cập nhật dữ liệu của phiên đấu giá
             assertThat(actualResponse).isEqualTo(expectedResponse);
-            assertThat(sampleAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
-            assertThat(sampleAuction.getWinner()).isEqualTo(sampleBidder);
-            assertThat(sampleAuction.getCurrentPrice()).isEqualTo(buyNowPrice);
+            assertThat(sampleAuction.getStatus()).isEqualTo(AuctionStatus.ENDED); // Trạng thái chốt sang ENDED
+            assertThat(sampleAuction.getWinner()).isEqualTo(sampleBidder); // Gán người mua làm Winner
+            assertThat(sampleAuction.getCurrentPrice()).isEqualTo(buyNowPrice); // Giá hiện tại = giá mua ngay
 
-            // ArgumentCaptor kiểm tra thông tin Bid được lưu xuống DB
+            // 🌟 Sử dụng ArgumentCaptor để trích xuất đối tượng Bid được truyền vào bidRepository.save()
             ArgumentCaptor<Bid> bidCaptor = ArgumentCaptor.forClass(Bid.class);
             then(bidRepository).should(times(1)).save(bidCaptor.capture());
 
@@ -354,7 +379,7 @@ class BiddingServiceTest {
             assertThat(capturedBid.getBidAmount()).isEqualTo(buyNowPrice);
             assertThat(capturedBid.getBidder()).isEqualTo(sampleBidder);
             assertThat(capturedBid.getAuction()).isEqualTo(sampleAuction);
-            assertThat(capturedBid.isAutoBid()).isFalse();
+            assertThat(capturedBid.isAutoBid()).isFalse(); // Mua ngay do người thật thao tác, không phải auto-bid
 
             then(bidValidator).should(times(1)).validateBuyNow(sampleBidder, sampleAuction);
             then(bidResponseHelper).should(times(1)).buildResponse(sampleAuction, savedBid, false);
