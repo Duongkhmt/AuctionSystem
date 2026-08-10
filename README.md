@@ -3,17 +3,14 @@
 **DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng.
 
 Hệ thống giải quyết bài toán đấu giá hàng hóa minh bạch, cạnh tranh theo thời gian thực và quản lý tài sản động. 
-Nền tảng hỗ trợ người bán (Seller) đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), 
+Nền tảng hỗ trợ người dùng đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), 
 hỗ trợ quy trình kiểm duyệt bài đăng bởi Quản trị viên (Admin), tích hợp công cụ tự động đấu giá (Proxy Bidding Engine), 
-cơ chế chống bắn tỉa phút chót (Soft-Close Anti-Sniping), và tự động hóa chuyển đổi trạng thái phiên đấu giá ngầm bằng Robot Scheduler.
+cơ chế chống bắn tỉa phút chót (Soft-Close Anti-Sniping), tự động xử lý đơn hàng bùng tiền quá 48h kèm phạt gậy vi phạm (Unpaid Strikes), và tự động hóa chuyển đổi trạng thái phiên đấu giá ngầm bằng Robot Scheduler.
 
 ### Đối tượng sử dụng:
-**Bidder (Người tham gia đấu giá):** Xem thông tin sản phẩm, tham gia đặt giá cạnh tranh, cài đặt mức giá trần tự động đấu giá (Proxy Bid), 
-xem lịch sử thầu ẩn danh, mua ngay sản phẩm với giá cố định (Buy Now), quản lý danh sách sản phẩm trúng thầu, 
-chốt địa chỉ thanh toán Checkout và xác nhận đã nhận được hàng.
-
-**Seller (Người bán):** Tạo mới bài đăng sản phẩm kèm ảnh mây, chỉnh sửa nội dung/danh sách ảnh, 
-hủy phiên đấu giá trước giờ G, đăng lại phiên đã hết hạn (Relist), xem danh sách đơn hàng đã bán và nhập mã vận đơn xuất hàng cho người mua.
+**User (Người dùng hệ thống):** Xem thông tin sản phẩm, tham gia đặt giá cạnh tranh, cài đặt mức giá trần tự động đấu giá (Proxy Bid), 
+xem lịch sử thầu ẩn danh, mua ngay sản phẩm với giá cố định (Buy Now), tạo sản phẩm đăng bán cá nhân, quản lý danh sách sản phẩm trúng thầu, 
+chốt địa chỉ thanh toán Checkout, xác nhận nhận hàng và quản lý đơn hàng bán được (nhập mã vận đơn xuất hàng).
 
 **Admin (Quản trị viên):** Xem danh sách các bài đăng sản phẩm chờ duyệt, thực hiện chấp thuận (Approve) 
 hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
@@ -22,20 +19,19 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 
 # 2. Tech Stack
 
-- **Java:** 21
+- **Java:** 21 (Eclipse Temurin 21)
 - **Spring Boot:** 4.1.0 (starter parent `org.springframework.boot:4.1.0`)
 - **Spring Security:** `org.springframework.boot:spring-boot-starter-security`
 - **Spring Data JPA:** `org.springframework.boot:spring-boot-starter-data-jpa`
 - **Validation:** `org.springframework.boot:spring-boot-starter-validation`
 - **Database:** PostgreSQL (`org.postgresql:postgresql`, phiên bản driver theo Spring Boot BOM)
-- **JWT:** Không tìm thấy trong source code
-- **Docker:** Không tìm thấy trong source code
 - **MapStruct:** 1.6.2 (`org.mapstruct:mapstruct` và `org.mapstruct:mapstruct-processor`)
 - **Lombok:** 1.18.34 (`org.projectlombok:lombok`)
 - **Testing:** JUnit 5 (`spring-boot-starter-test`), Mockito (`org.mockito:mockito-junit-jupiter`), AssertJ (`org.assertj:assertj-core`), JaCoCo Maven Plugin 0.8.12 (`org.jacoco:jacoco-maven-plugin`)
+- **Docker:** Multi-stage build (Alpine Linux + JDK/JRE 21)
 - **Các thư viện khác:**
-- **Cloudinary HTTP5:** 2.0.0 (`com.cloudinary:cloudinary-http5`) — Quản lý và lưu trữ hình ảnh trên mây.
-- **Java Dotenv:** 3.0.0 (`io.github.cdimascio:dotenv-java`) — Đọc biến môi trường từ tập tin `.env`.
+  - **Cloudinary HTTP5:** 2.0.0 (`com.cloudinary:cloudinary-http5`) — Quản lý và lưu trữ hình ảnh trên mây.
+  - **Java Dotenv:** 3.0.0 (`io.github.cdimascio:dotenv-java`) — Đọc biến môi trường từ tập tin `.env`.
 
 ---
 
@@ -44,7 +40,7 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 - **JDK:** 21 trở lên
 - **Build Tool:** Apache Maven 3.8+ (hoặc sử dụng script `mvnw` đi kèm dự án)
 - **Database:** PostgreSQL 15+ (bắt buộc hỗ trợ kiểu dữ liệu `JSONB`)
-- **Docker:** Không tìm thấy trong source code
+- **Docker & Docker Compose:** Tuỳ chọn (phục vụ đóng gói container và triển khai)
 - **Biến môi trường (Environment Variables):**
   - `spring.datasource.url` (Mặc định: `jdbc:postgresql://localhost:5432/auction_system`)
   - `spring.datasource.username` (Mặc định: `postgres`)
@@ -55,15 +51,17 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 
 ---
 
-# 4. Installation
+# 4. Installation & Docker Deployment
 
-### Bước 1: Clone dự án
+### Cách 1: Khởi chạy trên môi trường cục bộ (Local Development)
+
+#### Bước 1: Clone dự án
 ```bash
-git clone <https://github.com/Duongkhmt/AuctionSystem.git>
+git clone https://github.com/Duongkhmt/AuctionSystem.git
 cd Backend/DuAnTrainning
 ```
 
-### Bước 2: Cấu hình Cơ sở dữ liệu & Biến môi trường
+#### Bước 2: Cấu hình Cơ sở dữ liệu & Biến môi trường
 Tạo cơ sở dữ liệu PostgreSQL có tên `auction_system` trên máy địa phương hoặc máy chủ.  
 Tạo tập tin `.env` tại thư mục gốc của dự án (hoặc cập nhật trực tiếp trong `src/main/resources/application.properties`):
 
@@ -73,12 +71,12 @@ CLOUDINARY_API_KEY=your_api_key
 CLOUDINARY_API_SECRET=your_api_secret
 ```
 
-### Bước 3: Biên dịch dự án (Build)
+#### Bước 3: Biên dịch dự án (Build)
 ```bash
 ./mvnw clean package -DskipTests
 ```
 
-### Bước 4: Khởi chạy ứng dụng (Run)
+#### Bước 4: Khởi chạy ứng dụng (Run)
 ```bash
 ./mvnw spring-boot:run
 ```
@@ -86,6 +84,57 @@ hoặc chạy tập tin `.jar` sau khi build:
 ```bash
 java -jar target/DuAnTrainning-0.0.1-SNAPSHOT.jar
 ```
+
+---
+
+### Cách 2: Khởi chạy toàn bộ hệ thống bằng Docker Compose 
+
+Dự án hỗ trợ `docker-compose.yml` điều phối tự động PostgreSQL 16 + Spring Boot Backend + Angular Frontend Nginx tích hợp sẵn cơ chế **Healthcheck** (`pg_isready`):
+
+#### 1. Khởi chạy toàn bộ 3 dịch vụ (Database + BE + FE):
+```bash
+cd /home/duong/Projects
+docker-compose up -d --build
+```
+
+#### 2. Khởi chạy cặp đôi Backend & Database PostgreSQL riêng (Dev Mode):
+```bash
+cd /home/duong/Projects/Backend/DuAnTrainning
+docker-compose up -d --build
+```
+
+#### 3. Kiểm tra trạng thái và nhật ký log:
+```bash
+docker-compose ps
+docker-compose logs -f backend-api
+```
+
+#### 4. Dừng và dọn dẹp hệ thống:
+```bash
+docker-compose down
+```
+
+---
+
+### Cách 3: Build và Chạy Docker Container thủ công
+
+#### Build Docker Image:
+```bash
+docker build -t auction-system-backend:latest .
+```
+
+#### Chạy Docker Container đơn lẻ:
+```bash
+docker run -d -p 8080:8080 \
+  -e CLOUDINARY_CLOUD_NAME=your_cloud_name \
+  -e CLOUDINARY_API_KEY=your_api_key \
+  -e CLOUDINARY_API_SECRET=your_api_secret \
+  --name auction-backend auction-system-backend:latest
+```
+
+---
+
+
 # 5. Project Structure
 
 Mã nguồn dự án được tổ chức theo cấu trúc sau:
@@ -98,12 +147,12 @@ src/main/java/DuAnTrainning/AuctionSystem
 │   ├── request     # DTO đầu vào (ProductRequestDTO, CheckoutRequestDTO, ShipOrderRequestDTO...)
 │   └── response    # DTO đầu ra (ProductResponseDTO, WonAuctionResponseDTO, SellerOrderResponseDTO...)
 ├── entity          # JPA Entities (Product, Auction, Bid, Order, Payment, Category, User)
-├── enums           # Constants (AuctionStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus)
+├── enums           # Constants (AuctionStatus, ProductStatus, OrderStatus, PaymentMethod, PaymentStatus, UserRole, UserStatus)
 ├── exception       # Xử lý ngoại lệ tập trung (ApplicationException, ErrorCode, GlobalExceptionHandler)
-├── mapper          # MapStruct Interfaces (ProductMapper, AuctionMapper, BidMapper, OrderMapper)
-├── repository      # Spring Data JPA Repositories (Product, Auction, Bid, Order, Payment)
-├── service         # Tầng nghiệp vụ chính (ProductService, BiddingService, OrderService, AuctionScheduler)
-│   └── helper      # Helpers (OrderResponseHelper, ProductResponseHelper, BidResponseHelper...)
+├── mapper          # MapStruct Interfaces (ProductMapper, AuctionMapper, BidMapper, OrderMapper, UserMapper)
+├── repository      # Spring Data JPA Repositories (Product, Auction, Bid, Order, Payment, UserRepository)
+├── service         # Tầng nghiệp vụ chính (ProductService, BiddingService, OrderService, AuctionScheduler, CloudinaryService)
+│   └── helper      # Helpers (OrderResponseHelper, ProductResponseHelper, BidResponseHelper, ProxyBiddingEngineHelper...)
 └── validator       # Validators (OrderValidator, BidValidator, AuctionValidator, ProductImageValidator)
 ```
 
@@ -111,7 +160,7 @@ src/main/java/DuAnTrainning/AuctionSystem
 
 # 6. Business Overview
 
-Hệ thống đấu giá hoạt động theo quy trình nghiệp vụ khép kín từ đăng bán, kiểm duyệt đến diễn ra phiên và kết thúc:
+Hệ thống đấu giá hoạt động theo quy trình nghiệp vụ khép kín từ đăng bán, kiểm duyệt, diễn ra phiên, kết thúc và thanh toán xử lý bùng tiền:
 
 ### 1. Xem danh mục & Đăng bán sản phẩm
 - Người bán gửi thông tin sản phẩm và phiên đấu giá qua API. Sản phẩm hỗ trợ thuộc tính tĩnh (tiêu đề, mô tả) và 
@@ -141,23 +190,30 @@ thuộc tính động dạng `JSONB` (cho phép cấu hình linh hoạt thông s
 
 - **Soft-Close Anti-Sniping:** Nếu có lượt đặt giá hợp lệ xuất hiện trong 3 phút cuối cùng trước khi hết giờ, thời gian kết thúc phiên (`endTime`) 
 tự động gia hạn thêm **+3 phút**.
-- 
-**Mua Ngay (Buy Now):** Đối với phiên có thiết lập giá mua ngay `buyNowPrice`, Bidder chấp nhận mức giá này có thể kích hoạt mua ngay. 
+
+- **Mua Ngay (Buy Now):** Đối với phiên có thiết lập giá mua ngay `buyNowPrice`, Bidder chấp nhận mức giá này có thể kích hoạt mua ngay. 
 Hệ thống sẽ lập tức chốt phiên (`ENDED`), ghi nhận chiến thắng cho Bidder và cập nhật giá hiện tại bằng giá mua ngay.
 
-### 5. Quản lý Đơn hàng & Thanh toán Hậu Đấu Giá (Post-Auction Order Settlement)
-- **Tự động sinh đơn hàng:** Ngay khi phiên đấu giá hết giờ hoặc người mua thực hiện Mua Ngay, hệ thống (`AuctionScheduler` / `BiddingService.executeBuyNow`) tự động chốt người chiến thắng (`winner`) và tạo bản ghi Đơn hàng (`Order`) ở trạng thái **`UNPAID`**.
+### 4. Quản lý Đơn hàng & Thanh toán Hậu Đấu Giá (Post-Auction Order Settlement)
+- **Tự động sinh đơn hàng:** Ngay khi phiên đấu giá hết giờ hoặc người mua thực hiện Mua Ngay, hệ thống (`AuctionScheduler` / `BiddingService.executeBuyNow`) tự động chốt người chiến thắng (`winner`) và tạo bản ghi Đơn hàng (`Order`) ở trạng thái **`UNPAID`** kèm thời hạn chót **48 giờ** (`paymentDeadline`).
 - **Người mua Checkout:** Người mua vào danh sách đơn trúng thầu chọn đơn `UNPAID`, nhập địa chỉ nhận hàng, số điện thoại và chọn phương thức thanh toán. Hệ thống chuyển đơn sang **`PAID`** và sinh bản ghi Lịch sử thanh toán (`Payment`).
 - **Người bán Xuất hàng:** Người bán kiểm tra danh sách đơn bán được, nhập thông tin đơn vị vận chuyển (`courierName`) và mã vận đơn (`trackingNumber`) để xuất hàng. Hệ thống chuyển đơn sang **`SHIPPING`**.
 - **Người mua Nhận hàng:** Người mua nhận hàng đúng mô tả và bấm xác nhận. Hệ thống chuyển đơn sang **`COMPLETED`** và giải ngân hoàn tất giao dịch.
 
+### 5. Xử lý Bùng Hàng & Gậy Vi Phạm (Unpaid Order Auto-Cancel & 3-Strikes Penalty)
+- **Hạn chót thanh toán 48 tiếng (`paymentDeadline`):** Đơn hàng trúng thầu bắt buộc phải hoàn tất Checkout trong vòng 48h.
+- **Tự động hủy đơn & Phạt gậy (`AuctionScheduler`):** Nếu quá 48h đơn vẫn ở trạng thái `UNPAID`, Robot Scheduler tự động chuyển đơn sang **`CANCELLED`** và tính **+1 Gậy Vi Phạm (Unpaid Strike)** cho tài khoản người mua.
+- **Chế tài cấm đấu giá 90 ngày (3-Strikes Rule):** Khi người dùng tích lũy đủ **3 Gậy Vi Phạm**, hệ thống tự động khóa tính năng đặt giá / mua ngay trong vòng **90 ngày** (`bannedUntil = now + 90 days`).
+- **Cơ chế tự động mở khóa lười (Lazy Unban Check):** Ngay khi hết thời hạn 90 ngày phạt, ở lần bấm đặt giá kế tiếp của người dùng, `BidValidator` tự động phát hiện, gỡ bỏ án cấm và reset gậy vi phạm về 0.
+
 ### 6. Vòng đời Trạng thái (State Machines)
 - **ProductStatus:** `PENDING` ➔ `APPROVED` / `REJECTED`
 - **AuctionStatus:** `PENDING_APPROVAL` ➔ `SCHEDULED` / `RUNNING` ➔ `ENDED` / `EXPIRED` / `CANCELLED`
-- **OrderStatus:** `UNPAID` ➔ `PAID` ➔ `SHIPPING` ➔ `COMPLETED`
+- **OrderStatus:** `UNPAID` ➔ `PAID` ➔ `SHIPPING` ➔ `COMPLETED` | `CANCELLED` (do bùng quá 48h)
+- **UserRole:** `USER`, `ADMIN`
+- **UserStatus:** `ACTIVE`, `SUSPENDED`
 
 ---
-
 
 # 7. REST API
 
@@ -201,13 +257,12 @@ Danh sách toàn bộ các Endpoint được phân nhóm theo đối tượng s�
 
 ---
 
-
-
 # 8. Database Overview
 
 Cấu trúc các bảng dữ liệu trong PostgreSQL và mối quan hệ giữa các Entity:
 
 ### 1. `users` (Quản lý tài khoản)
+- **Các trường chính:** `id`, `username`, `email`, `password_hash`, `unpaid_strike_count`, `banned_until`, `role` (`UserRole`), `status` (`UserStatus`), `created_at`.
 - **Quan hệ:**
   - One-to-Many với `products` (vai trò `seller`)
   - One-to-Many với `bids` (vai trò `bidder`)
@@ -250,7 +305,7 @@ Cấu trúc các bảng dữ liệu trong PostgreSQL và mối quan hệ giữa 
   - Many-to-One với `products` (`product_id`)
   - Many-to-One với `users` (`buyer_id`, `seller_id`)
   - One-to-Many với `payments`
-- **Các trường chính:** `id`, `auction_id`, `product_id`, `buyer_id`, `seller_id`, `winning_price`, `shipping_address`, `phone_number`, `courier_name`, `tracking_number`, `status` (`OrderStatus`).
+- **Các trường chính:** `id`, `auction_id`, `product_id`, `buyer_id`, `seller_id`, `winning_price`, `shipping_address`, `phone_number`, `courier_name`, `tracking_number`, `payment_deadline`, `status` (`OrderStatus`).
 
 ### 8. `payments` (Lịch sử thanh toán đơn hàng)
 - **Quan hệ:**
@@ -261,32 +316,38 @@ Cấu trúc các bảng dữ liệu trong PostgreSQL và mối quan hệ giữa 
 
 # 9. Authentication & Authorization
 
-....
+Dự án thiết lập sẵn hạ tầng Spring Security, hỗ trợ phân quyền vai trò dựa trên `UserRole` (`USER`, `ADMIN`). Giai đoạn tiếp theo sẽ tích hợp JWT Authentication Filter để đọc token từ `Authorization: Bearer <token>` Header.
+
 ---
 
 # 10. Scheduler / Background Jobs
 
-Dự án kích hoạt tính năng lập lịch tự động qua annotation `@EnableScheduling` tại `DuAnTrainningApplication`.
+Dự án kích hoạt tính năng lập lịch tự động qua annotation `@EnableScheduling` tại `AuctionSystemApplication`.
 
 ### `AuctionScheduler.java`
 - **Tần suất chạy:** `@Scheduled(fixedRate = 10000)` — Chạy ngầm mỗi **10 giây**.
 - **Nhiệm vụ nghiệp vụ:**
-  1. `autoStartAuctions`: Thực thi câu lệnh Bulk Update SQL tự động chuyển các phiên đấu giá từ `SCHEDULED` sang `RUNNING` 
-                          khi thời điểm hiện tại `>= startTime` và sản phẩm có trạng thái `APPROVED`.
-  
-  2. `autoEndAuctions`: Thực thi câu lệnh Bulk Update SQL tự động chuyển các phiên đấu giá từ `RUNNING` sang `ENDED` khi thời điểm hiện tại `>= endTime`.
+  1. `autoStartAuctions`: Tự động chuyển các phiên từ `SCHEDULED` sang `RUNNING` khi tới giờ `startTime`.
+  2. `autoExpireBuyNowAuctions`: Tự động hết hạn bài Mua Ngay 30 ngày.
+  3. `processEndedAuctions`: Tự động chốt Winner và tạo Đơn hàng `UNPAID` kèm `paymentDeadline = 48h` cho phiên thầu kết thúc.
+  4. `backfillMissingOrders`: Tự động bổ sung bản ghi đơn hàng bị khuyết cho các phiên có Winner.
+  5. `processExpiredUnpaidOrders`: Tự động hủy đơn `UNPAID` quá 48h (`CANCELLED`), tăng `unpaidStrikeCount + 1` và cấm đấu giá 90 ngày khi bùng đủ 3 lần.
 
 ---
 
-# 11. Testing
+# 11. Testing & Code Coverage
 
-Dự án áp dụng Unit Testing với khung kiểm thử chuẩn:
+Dự án áp dụng Pure Unit Testing với khung kiểm thử chuyên sâu:
 - **Thư viện:** JUnit 5, Mockito (`MockitoExtension`), AssertJ, JaCoCo Maven Plugin (0.8.12).
-- **Unit Test:**
-  - `ProductServiceTest`: Kiểm thử độc lập cho các phương thức tạo sản phẩm, truy vấn danh sách seller/public, admin phê duyệt/từ chối, hủy phiên và tái đăng bài thầu.
-  - `BiddingServiceTest`: Kiểm thử độc lập cho thao tác đặt giá (bình thường & có gia hạn anti-sniping), lấy lịch sử thầu và tính năng mua ngay (Buy Now).
-- **Integration Test:** Không tìm thấy trong source code
-- **Code Coverage:** Đã cấu hình JaCoCo tự động tạo báo cáo độ bao phủ mã nguồn HTML khi thực thi lệnh `./mvnw test` (được cấu hình loại trừ các package `entity`, `dto`, `config`, `security`).
+- **Unit Test Suites (7 file test suite lớn):**
+  - `ProductServiceTest`: Kiểm thử độc lập cho tạo sản phẩm, upload ảnh mây, admin duyệt/từ chối, hủy phiên và relist bài thầu.
+  - `BiddingServiceTest`: Kiểm thử thao tác đặt giá, gia hạn soft-close anti-sniping, lịch sử bid và mua ngay Buy Now.
+  - `OrderServiceTest`: Kiểm thử truy vấn đơn trúng thầu, checkout thanh toán, người bán xuất hàng và người mua xác nhận nhận hàng.
+  - `CategoryServiceTest`: Kiểm thử lọc danh mục sản phẩm active.
+  - `AuctionSchedulerTest`: Kiểm thử robot chốt thầu hết giờ, phân biệt kịch bản `ENGLISH` vs `RESERVE`.
+  - `BidStepCalculatorHelperTest`: Kiểm thử tính bước giá động theo 3 mốc bậc thang bằng kỹ thuật Spying (`@Spy`).
+  - `CloudinaryServiceTest`: Kiểm thử tải ảnh và xóa ảnh trên Cloudinary CDN.
+- **Code Coverage Report:** JaCoCo tự động tiêm probe đo độ phủ bytecode và tạo báo cáo HTML trực quan tại `target/site/jacoco/index.html` khi chạy `./mvnw test`.
 
 ---
 
@@ -308,8 +369,11 @@ Checklist trạng thái phát triển dựa trên source code thực tế:
 - [x] Chống bắn tỉa phút chót (Soft-Close Anti-Sniping tự động cộng 3 phút)
 - [x] Mua ngay sản phẩm với giá cố định (Buy Now)
 - [x] Lịch sử đấu giá công khai mã hóa ẩn danh tên người đặt
-- [x] Robot quét tự động kích hoạt RUNNING / kết thúc ENDED ngầm (Scheduler 10s)
+- [x] Quản lý đơn hàng trúng thầu & thanh toán Checkout / Xuất hàng / Xác nhận nhận hàng
+- [x] Tự động hủy đơn bùng tiền quá 48h & Phạt Gậy Vi Phạm (Unpaid Strikes) cấm 90 ngày khi đủ 3 gậy
+- [x] Refactor Enum hóa `UserRole` (`USER`, `ADMIN`) và `UserStatus` (`ACTIVE`, `SUSPENDED`)
+- [x] Robot quét tự động kích hoạt RUNNING / kết thúc ENDED ngầm / dọn đơn 48h (Scheduler 10s)
 - [x] Tối ưu hóa truy vấn danh sách loại bỏ lỗi N+1 Query (Batch Loading In-Memory Map)
 - [x] Xử lý ngoại lệ tập trung (Global Exception Handler & ErrorCode enum)
-- [x] Unit Testing cho tầng Service (JUnit 5 + Mockito + JaCoCo coverage)
-
+- [x] Unit Testing cho tầng Service (7 Test Suites, JUnit 5 + Mockito + JaCoCo coverage)
+- [x] Đóng gói Container Docker Multi-stage build (Alpine Linux + JRE 21)

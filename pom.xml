@@ -146,6 +146,9 @@
 				<artifactId>jacoco-maven-plugin</artifactId>
 				<version>0.8.12</version>
 				<configuration>
+					<includes>
+						<include>**/service/**</include>
+					</includes>
 					<excludes>
 						<exclude>**/entity/**</exclude>
 						<exclude>**/dto/**</exclude>

@@ -1,0 +1,471 @@
+--------------------------------------------------------------------------------
+MỤC LỤC TÀI LIỆU:
+1. LÝ THUYẾT NỀN TẢNG VỀ DOCKER VÀ MULTI-STAGE BUILD
+2. CHI TIẾT SÂU VỀ DOCKERFILE BACKEND (SPRING BOOT - JAVA 21)
+3. CHI TIẾT SÂU VỀ DOCKERFILE FRONTEND (ANGULAR 19)
+4. CHI TIẾT FILE NGINX.CONF VÀ BẢN CHẤT SPA ROUTING
+5. HƯỚNG DẪN CHẠY ĐỘC LẬP BACKEND (BE)
+6. HƯỚNG DẪN CHẠY ĐỘC LẬP FRONTEND (FE)
+7. HƯỚNG DẪN CHẠY KẾT HỢP TOÀN BỘ HỆ THỐNG (POSTGRESQL + BE + FE)
+8. HƯỚNG DẪN CHẠY RIÊNG BIỆT TỪNG DỊCH VỤ BẰNG DOCKER COMPOSE
+--------------------------------------------------------------------------------
+
+
+================================================================================
+1. LÝ THUYẾT NỀN TẢNG VỀ DOCKER VÀ MULTI-STAGE BUILD
+================================================================================
+
+1.1. Container là gì và khác gì so với Máy ảo (Virtual Machine - VM)?
+------------------------------------------------------------------
+- Máy ảo (VM): Mỗi máy ảo phải cài một Hệ điều hành (Guest OS) riêng biệt, chạy trên 
+  Hypervisor. Rất nặng, tốn gigabyte RAM/Disk và khởi động mất vài phút.
+- Container (Docker): Chia sẻ chung Nhân (Kernel) của Hệ điều hành máy chủ (Host OS). 
+  Mỗi container đóng gói ứng dụng cùng các thư viện phụ thuộc trong một không gian 
+  cô lập (Namespace & Cgroups). Rất nhẹ, khởi động chỉ mất vài giây và tốn cực kỳ ít RAM.
+
+1.2. Tại sao lại cần Docker cho ứng dụng Java Backend và Angular Frontend?
+---------------------------------------------------------------------------
+- Trong môi trường truyền thống (không dùng Docker), bạn phải tự tay cài JDK 21, Maven, 
+  Node.js, Nginx, PostgreSQL trên máy server. Khi đưa mã nguồn lên các môi trường khác nhau 
+  (Ubuntu, CentOS, AWS, Cloud), chỉ cần chênh lệch phiên bản Java (ví dụ Java 17 vs Java 21) 
+  hoặc thiếu thư viện C/C++ native của OS là ứng dụng sẽ bị crash hoặc nảy lỗi "Unsupported 
+  major.minor version".
+- Với Docker: Tất cả mọi thứ (Hệ điều hành nhẹ Alpine + JRE 21 + Nginx + mã nguồn đã bien dich) 
+  được đóng gói thành một "khối thống nhất" (Docker Image). Bạn đem chạy ở bất kỳ đâu cũng 
+  đều ra ĐÚNG 1 KẾT QUẢ ĐỒNG NHẤT 100%.
+
+1.3. Kỹ thuật Multi-Stage Build (Build nhiều giai đoạn) là gì?
+-------------------------------------------------------------
+- Vấn đề: Nếu dùng chung 1 Image để vừa biên dịch code (Maven/Node) vừa chạy ứng dụng, 
+  Image tạo ra sẽ phình to (1GB - 1.5GB) và chứa nhiều công cụ thừa (JDK, Maven, Node.js, npm), 
+  tạo nên nguy cơ lỗ hổng bảo mật nghiêm trọng.
+- Giải pháp Multi-Stage Build:
+  + Stage 1 (Builder): Sử dụng Image có công cụ build (Maven / Node) để bien dich 
+    mã nguồn thành sản phẩm đầu ra (file .jar hoặc thư mục dist html/js).
+  + Stage 2 (Runtime): Tạo một Image siêu nhẹ mới (Alpine JRE / Alpine Nginx), chỉ 
+    COPY duy nhất sản phẩm đầu ra từ Stage 1 sang. Loại bỏ 100% công cụ bien dich thừa.
+  => Kết quả: Dung lượng Image giảm từ 1GB xuống chỉ còn khoảng 100MB - 180MB!
+
+
+================================================================================
+2. CHI TIẾT SÂU VỀ DOCKERFILE BACKEND (Backend/DuAnTrainning/Dockerfile)
+================================================================================
+
+Vị trí file: Backend/DuAnTrainning/Dockerfile
+
+CẤU TRÚC FILE DOCKERFILE BACKEND:
+--------------------------------------------------------------------------------
+# Stage 1: Build file JAR từ source code bằng Maven
+FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder
+WORKDIR /app
+COPY pom.xml .
+RUN mvn dependency:go-offline -B
+COPY src ./src
+RUN mvn clean package -DskipTests
+
+# Stage 2: Chạy file JAR với JRE 21 siêu nhẹ
+FROM eclipse-temurin:21-jre-alpine
+WORKDIR /app
+COPY --from=builder /app/target/*.jar app.jar
+EXPOSE 8080
+ENTRYPOINT ["java", "-jar", "app.jar"]
+--------------------------------------------------------------------------------
+
+BẢN CHẤT KỸ THUẬT VÀ GIẢI THÍCH CHI TIẾT TỪNG DÒNG LỆNH BACKEND:
+
+1. `FROM maven:3.9.6-eclipse-temurin-21-alpine AS builder`
+   - `alpine`: Hệ điều hành Linux tối giản nhẹ nhất thế giới (chỉ ~5MB OS), loại bỏ 
+     toàn bộ trình duyệt, đồ họa, phần mềm thừa để giảm dung lượng và tăng bảo mật.
+   - `eclipse-temurin`: Bộ JDK Java 21 mã nguồn mở chất lượng cao hàng đầu thế giới do 
+     Eclipse Foundation bảo trì.
+   - `AS builder`: Đặt nhãn tên cho Stage 1 là "builder" để Stage 2 có thể trích xuất 
+     file .jar sang.
+
+2. `WORKDIR /app`
+   - Tạo và chuyển thư mục làm việc mặc định bên trong container thành `/app`. Tất cả các 
+     lệnh `COPY`, `RUN` tiếp theo đều thực thi tại `/app`.
+
+3. `COPY pom.xml .` & `RUN mvn dependency:go-offline -B`
+   - BẢN CHẤT KỸ THUẬT DOCKER LAYER CACHING:
+     Docker lưu cache hệ thống theo từng dòng lệnh. Dòng nào ít thay đổi sẽ được lưu Cache 
+     vào đĩa cứng local.
+     File `pom.xml` (khai báo thư viện) rất ít khi thay đổi so với mã nguồn `.java`. Bằng 
+     cách copy `pom.xml` trước và chạy `mvn dependency:go-offline -B`, Docker sẽ tải sẵn 
+     toàn bộ ~200MB thư viện Spring Boot, Hibernate, PostgreSQL Driver... về cache.
+     Khi bạn sửa code Java ở các lần build sau, Docker sẽ BỎ QUA bước tải thư viện này và 
+     dùng lại Cache, giúp thời gian build Image rút ngắn từ 3 phút xuống chỉ còn 5 GIÂY!
+   - Cờ `-B` (Batch mode): Tắt thanh phần trăm tiến trình (Progress bar) xoay xoay của Maven 
+     để bớt ghi file log rác.
+
+4. `COPY src ./src` & `RUN mvn clean package -DskipTests`
+   - Copy thư mục mã nguồn Java `src/` vào `/app/src`.
+   - `mvn clean package`: Gọi trình biên dịch Java (`javac`) bien dich tất cả file `.java` 
+     thành `.class`, sau đó nén file `.class` + `pom.xml` + Spring Boot Loader thành 
+     một file Fat JAR duy nhất nằm tại `/app/target/*.jar`.
+   - `-DskipTests`: Tắt bước chạy test khi build Image để tiết kiệm thời gian (vì test 
+     đã được chạy độc lập ở bước kiểm thử tự động).
+
+5. `FROM eclipse-temurin:21-jre-alpine`
+   - BẢN CHẤT PHÂN BIỆT JDK VS JRE:
+     + JDK (Java Development Kit): Chứa bộ bien dich `javac`, `javadoc`, `jdb`... nặng >350MB. 
+       Nó chỉ cần thiết ở Stage 1 để bien dich code.
+     + JRE (Java Runtime Environment): Chỉ chứa JVM (Java Virtual Machine) để CHẠY file 
+       .jar đã bien dich sẵn, dung lượng cực nhẹ (~90MB).
+     + Việc chuyển sang JRE ở Stage 2 loại bỏ toàn bộ công cụ bien dich thừa, vừa giảm 
+       kích thước Image vừa ngăn chặn kẻ xấu lợi dụng bộ bien dich JDK để tấn công Server.
+
+6. `COPY --from=builder /app/target/*.jar app.jar`
+   - Copy ĐÚNG 1 FILE `app.jar` đã đóng gói từ Stage 1 (`builder`) sang Stage 2. 
+     Toàn bộ mã nguồn `src/`, file cấu hình `pom.xml` và cache Maven tốn hàng trăm MB 
+     ở Stage 1 BỊ XÓA BỎ HOÀN TOÀN, không dính vào Image cuối cùng.
+
+7. `EXPOSE 8080` & `ENTRYPOINT ["java", "-jar", "app.jar"]`
+   - `EXPOSE 8080`: Khai báo cổng 8080 ứng dụng Spring Boot lắng nghe.
+   - `ENTRYPOINT ["java", "-jar", "app.jar"]`: Sử dụng cú pháp JSON Array (Exec Form) 
+     để khởi chạy ứng dụng trực tiếp dưới dạng Tiến trình chính (PID 1) của Container. 
+     Điều này giúp ứng dụng Spring Boot nhận đúng tín hiệu tắt (`SIGTERM`) từ Docker 
+     khi dừng Container, đóng kết nối Database PostgreSQL một cách an toàn (Graceful Shutdown).
+
+
+================================================================================
+3. CHI TIẾT SÂU VỀ DOCKERFILE FRONTEND (Frontend/AuctionSystemUI/Dockerfile)
+================================================================================
+
+Vị trí file: Frontend/AuctionSystemUI/Dockerfile
+
+CẤU TRÚC FILE DOCKERFILE FRONTEND:
+--------------------------------------------------------------------------------
+# Stage 1: Build Angular dist bằng Node 20
+FROM node:20-alpine AS builder
+WORKDIR /app
+COPY package*.json ./
+RUN npm install
+COPY . .
+RUN npm run build -- --configuration production
+
+# Stage 2: Serve trang web bằng Nginx
+FROM nginx:alpine
+COPY nginx.conf /etc/nginx/conf.d/default.conf
+COPY --from=builder /app/dist/auction-system-ui/browser /usr/share/nginx/html
+EXPOSE 80
+CMD ["nginx", "-g", "daemon off;"]
+--------------------------------------------------------------------------------
+
+GIẢI THÍCH CHI TIẾT TỪNG DÒNG LỆNH FRONTEND:
+1. `FROM node:20-alpine AS builder`: Sử dụng Node.js 20 bản Alpine làm môi trường Stage 1 
+   để bien dich mã nguồn Angular TypeScript.
+2. `COPY package*.json ./` & `RUN npm install`: Tải và cài đặt các gói thư viện 
+   Node modules (`node_modules`) vào cache của Stage 1.
+3. `RUN npm run build -- --configuration production`: Gọi Angular CLI bien dich mã nguồn 
+   TypeScript thành các file Javascript/HTML/CSS tĩnh đã nén (Minified & Tree-shaken) 
+   nằm tại thư mục `dist/auction-system-ui/browser`.
+4. `FROM nginx:alpine`: Chuyển sang Stage 2 sử dụng Nginx Web Server siêu nhẹ (chỉ ~25MB).
+5. `COPY nginx.conf /etc/nginx/conf.d/default.conf`: Đè file cấu hình SPA Nginx vào Nginx.
+6. `COPY --from=builder /app/dist/... /usr/share/nginx/html`: Copy toàn bộ file tĩnh 
+   HTML/JS/CSS đã bien dich từ Stage 1 sang thư mục phục vụ mặc định của Nginx.
+7. `CMD ["nginx", "-g", "daemon off;"]`: Giữ Nginx chạy dạng Foreground process để 
+   Container không bị tự động thoát.
+
+
+================================================================================
+4. CHI TIẾT FILE NGINX.CONF VÀ BẢN CHẤT SPA ROUTING
+================================================================================
+
+Vị trí file: Frontend/AuctionSystemUI/nginx.conf
+
+MÃ NGUỒN:
+--------------------------------------------------------------------------------
+server {
+    listen 80;
+    server_name localhost;
+
+    location / {
+        root /usr/share/nginx/html;
+        index index.html index.htm;
+        try_files $uri $uri/ /index.html;
+    }
+
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+--------------------------------------------------------------------------------
+
+BẢN CHẤT KỸ THUẬT CỦA CÂU LỆNH `try_files $uri $uri/ /index.html;`:
+- Angular là một Single Page Application (SPA). Toàn bộ ứng dụng thực chất chỉ có 
+  DUY NHẤT 1 FILE VẬT LÝ là `index.html`. Các đường dẫn như `/products/10` hay 
+  `/bidder/checkout/5` chỉ là đường dẫn ảo do Router của Angular quản lý phía Client.
+- Khi người dùng F5 hoặc nhập trực tiếp URL `http://localhost/products/10`:
+  1. Nginx kiểm tra xem trên đĩa cứng có file vật lý tên `/products/10` không (`$uri`).
+  2. Nginx kiểm tra xem có thư mục tên `/products/10/` không (`$uri/`).
+  3. Nếu KHÔNG THẤY (trả về 404), thay vì báo lỗi 404 cho người dùng, dòng lệnh 
+     `try_files` điều hướng yêu cầu về lại file `/index.html`.
+  4. Trình duyệt tải `index.html`, mã JavaScript của Angular được nạp và Angular Router 
+     sẽ đọc URL `/products/10` để hiển thị đúng màn hình chi tiết sản phẩm.
+
+
+================================================================================
+5. HƯỚNG DẪN CHẠY ĐỘC LẬP BACKEND (BE)
+================================================================================
+
+Trường hợp bạn chỉ muốn build và chạy riêng một mình Backend Spring Boot (ví dụ: 
+đã có sẵn Database PostgreSQL chạy ở ngoài máy thật).
+
+BƯỚC 1: Đảm bảo Database PostgreSQL ngoài máy thật đang chạy (ví dụ cổng 5432).
+
+BƯỚC 2: Mở Terminal và di chuyển vào thư mục Backend:
+  $ cd /home/duong/Projects/Backend/DuAnTrainning
+
+BƯỚC 3: Thao tác Build Docker Image cho Backend:
+  $ docker build -t auction-backend:1.0 .
+  (Dấu chấm ở cuối có nghĩa là lấy Dockerfile tại thư mục hiện tại)
+
+BƯỚC 4: Lệnh chạy Container Backend độc lập trên Linux (Ubuntu):
+  $ docker run -d \
+      --name backend-app \
+      -p 8080:8080 \
+      --add-host=host.docker.internal:host-gateway \
+      -e SPRING_DATASOURCE_URL=jdbc:postgresql://host.docker.internal:5432/auction_system \
+      -e SPRING_DATASOURCE_USERNAME=postgres \
+      -e SPRING_DATASOURCE_PASSWORD=postgres_password \
+      auction-backend:1.0
+
+  * GIẢI THÍCH THAM SỐ LỆNH CHẠY BE:
+    - `-d`: Chạy ngầm (Detached mode).
+    - `--name backend-app`: Đặt tên Container là `backend-app`.
+    - `-p 8080:8080`: Ánh xạ cổng 8080 của máy thật vào cổng 8080 của Container.
+    - `--add-host=host.docker.internal:host-gateway`: Thêm bản ghi DNS định tuyến 
+      chuỗi `host.docker.internal` trên Linux Ubuntu về đúng IP máy thật.
+    - `-e SPRING_DATASOURCE_URL=...`: Truyền biến môi trường ghi đè cấu hình 
+      database. Chuỗi `host.docker.internal` giúp Container kết nối ra PostgreSQL 
+      đang chạy ngoài máy thật (Host OS).
+
+
+BƯỚC 5: Kiểm tra Log chạy của Backend:
+  $ docker logs -f backend-app
+
+BƯỚC 6: Dừng và Xóa Container Backend khi không dùng nữa:
+  $ docker stop backend-app
+  $ docker rm backend-app
+
+
+================================================================================
+6. HƯỚNG DẪN CHẠY ĐỘC LẬP FRONTEND (FE)
+================================================================================
+
+Trường hợp bạn chỉ muốn build và chạy riêng một mình Frontend Angular UI với Nginx Web Server.
+
+BƯỚC 1: Mở Terminal và di chuyển vào thư mục Frontend:
+  $ cd /home/duong/Projects/Frontend/AuctionSystemUI
+
+BƯỚC 2: Thao tác Build Docker Image cho Frontend:
+  $ docker build -t auction-frontend:1.0 .
+
+BƯỚC 3: Lệnh chạy Container Frontend độc lập:
+  $ docker run -d \
+      --name frontend-app \
+      -p 80:80 \
+      auction-frontend:1.0
+
+  * GIẢI THÍCH THAM SỐ LỆNH CHẠY FE:
+    - `-p 80:80`: Ánh xạ cổng 80 của máy thật (HTTP chuẩn) vào cổng 80 của Nginx trong Container.
+
+BƯỚC 4: Truy cập ứng dụng trên trình duyệt:
+  Mở trình duyệt gõ: `http://localhost`
+
+BƯỚC 5: Kiểm tra Log chạy của Nginx Web Server:
+  $ docker logs -f frontend-app
+
+BƯỚC 6: Dừng và Xóa Container Frontend:
+  $ docker stop frontend-app
+  $ docker rm frontend-app
+
+
+================================================================================
+7. HƯỚNG DẪN CHẠY KẾT HỢP TOÀN BỘ HỆ THỐNG (POSTGRESQL + BE + FE)
+================================================================================
+
+Đây là cách chuẩn nhất khi Triển khai (Deploy) dự án thực tế. Cả 3 thành phần Database, 
+Backend và Frontend sẽ tự động khởi tạo, tự nối mạng và tự giao tiếp với nhau mà bạn 
+không cần gõ từng lệnh thủ công.
+
+BƯỚC 1: Tạo file `docker-compose.yml` tại thư mục gốc của dự án 
+(`/home/duong/Projects/docker-compose.yml`) với nội dung:
+
+--------------------------------------------------------------------------------
+version: '3.8'
+
+services:
+  # 1. Container Database PostgreSQL 16
+  postgres-db:
+    image: postgres:16-alpine
+    container_name: auction_postgres_db
+    restart: always
+    environment:
+      POSTGRES_DB: auction_system
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres_password
+    ports:
+      - "5432:5432"
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d auction_system"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - auction-network
+
+  # 2. Container Backend Spring Boot API
+  backend-api:
+    build:
+      context: ./Backend/DuAnTrainning
+      dockerfile: Dockerfile
+    container_name: auction_backend_api
+    restart: always
+    ports:
+      - "8080:8080"
+    env_file:
+      - ./Backend/DuAnTrainning/.env
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/auction_system
+      SPRING_DATASOURCE_USERNAME: postgres
+      SPRING_DATASOURCE_PASSWORD: postgres_password
+    depends_on:
+      postgres-db:
+        condition: service_healthy
+    networks:
+      - auction-network
+
+  # 3. Container Frontend Angular Nginx UI
+  frontend-ui:
+    build:
+      context: ./Frontend/AuctionSystemUI
+      dockerfile: Dockerfile
+    container_name: auction_frontend_ui
+    restart: always
+    ports:
+      - "80:80"
+    depends_on:
+      - backend-api
+    networks:
+      - auction-network
+
+networks:
+  auction-network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+    driver: local
+--------------------------------------------------------------------------------
+
+GIẢI THÍCH CHI TIẾT BẢN CHẤT KỸ THUẬT VÀ CÁC THÀNH PHẦN TRONG DOCKER-COMPOSE.YML:
+
+1. Cơ chế Healthcheck (`pg_isready`) & Giải quyết bài toán Race Condition:
+   - Vấn đề: Nếu chỉ khai báo `depends_on: postgres-db` thông thường, Docker Compose chỉ chờ 
+     Container `postgres-db` vừa bật lên (chưa đầy 0.5s) là khởi chạy ngay `backend-api`. Tuy 
+     nhiên, engine Database PostgreSQL bên trong container phải mất từ 2-5 giây để khởi tạo 
+     socket nghe và nạp dữ liệu. Kết quả: Spring Boot khởi động trước và ném lỗi crash ứng dụng 
+     `PSQLException: Connection to postgres-db:5432 refused`.
+   - Giải pháp Healthcheck:
+     + `test: ["CMD-SHELL", "pg_isready -U postgres -d auction_system"]`: Định kỳ mỗi 5 giây, 
+       Docker chạy công cụ `pg_isready` truy vấn xem Postgres đã sẵn sàng nhận kết nối SQL chưa.
+     + `condition: service_healthy`: Ép buộc Docker Compose phải tạm dừng Container `backend-api`, 
+       cho đến khi `postgres-db` trả về trạng thái `healthy` mới cho phép Spring Boot khởi chạy!
+
+2. Truyền biến môi trường & Bảo mật khóa Secret (`env_file` & `environment`):
+   - `env_file: - ./Backend/DuAnTrainning/.env`: Tự động đọc và nạp các biến môi trường 
+     nhạy cảm (`CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET`) từ 
+     file `.env` vào container mà không cần hardcode vào file `.yml` hay push lên Git.
+   - `SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/auction_system`: 
+     Thay vì dùng `localhost`, ta sử dụng hostname là tên service `postgres-db`. Docker DNS 
+     sẽ tự động định tuyến IP container chính xác.
+
+3. Mạng cô lập ảo (Bridge Network `auction-network`):
+   - `driver: bridge`: Tạo một Virtual Switch mạng nội bộ cô lập riêng cho 3 container. 
+     Các container giao tiếp trực tiếp với nhau qua tên service (`postgres-db`, `backend-api`) 
+     với tốc độ đường truyền mạng nội bộ siêu tốc và độ bảo mật cao.
+
+4. Lưu trữ dữ liệu lâu dài (Volume Persistence `postgres_data`):
+   - Bản chất Container là Ephemeral (bị xóa mất dữ liệu khi container bị kill/stop).
+   - `volumes: postgres_data:/var/lib/postgresql/data`: Gắn (mount) thư mục chứa dữ liệu 
+     SQL của PostgreSQL trong container vào một vùng nhớ bền vững `postgres_data` trên ổ đĩa 
+     của máy chủ Host. Ngay cả khi bạn tắt container (`docker-compose down`), toàn bộ dữ liệu 
+     bảng biểu, người dùng và sản phẩm vẫn được bảo toàn nguyên vẹn 100%.
+
+--------------------------------------------------------------------------------
+BƯỚC 2: Lệnh khởi chạy toàn bộ 3 dịch vụ chỉ bằng 1 dòng lệnh:
+  $ cd /home/duong/Projects
+  $ docker-compose up --build -d
+
+BƯỚC 3: Kiểm tra trạng thái toàn bộ 3 Container và Healthcheck:
+  $ docker-compose ps
+
+BƯỚC 4: Mở trình duyệt xem thành quả:
+  - Frontend UI: `http://localhost`
+  - Backend API: `http://localhost:8080/v1/products`
+
+BƯỚC 5: Xem nhật ký log của từng container khi đang chạy:
+  $ docker-compose logs -f backend-api
+
+BƯỚC 6: Tắt và dọn dẹp toàn bộ 3 Container khi dừng làm việc:
+  $ docker-compose down
+
+================================================================================
+8. HƯỚNG DẪN CHẠY RIÊNG BIỆT TỪNG DỊCH VỤ BẰNG DOCKER COMPOSE
+================================================================================
+
+Trong quá trình phát triển (Dev Mode), nếu bạn chỉ muốn khởi chạy một dịch vụ 
+cụ thể (ví dụ: chỉ chạy Backend + Postgres, hoặc chỉ chạy riêng Postgres) 
+mà không cần khởi chạy toàn bộ cả Frontend, bạn thực hiện theo các lệnh dưới đây:
+
+--------------------------------------------------------------------------------
+KỊCH BẢN 1: CHẠY ĐỘC LẬP BACKEND API + DATABASE POSTGRESQL (DEV MODE)
+--------------------------------------------------------------------------------
+Sử dụng file `docker-compose.yml` nằm riêng trong thư mục Backend:
+
+1. Giải phóng cổng 5432 trên máy thật (nếu có Postgres Ubuntu đang chạy):
+   $ sudo systemctl stop postgresql
+
+2. Di chuyển vào thư mục Backend:
+   $ cd /home/duong/Projects/Backend/DuAnTrainning
+
+3. Lệnh khởi chạy riêng cặp đôi Backend API + Postgres DB:
+   $ docker-compose up -d --build
+
+4. Kiểm tra trạng thái Container:
+   $ docker-compose ps
+
+5. Xem log hoạt động của Backend:
+   $ docker-compose logs -f backend-api
+
+6. Tắt riêng cặp Backend + Postgres khi xong việc:
+   $ docker-compose down
+
+
+--------------------------------------------------------------------------------
+KỊCH BẢN 2: CHẠY RIÊNG TỪNG SERVICE CỤ THỂ BẰNG CHỈ ĐỊNH SERVICE NAME
+--------------------------------------------------------------------------------
+Tại thư mục gốc `/home/duong/Projects`, bạn có thể chỉ định chính xác tên 
+dịch vụ muốn bật/tắt:
+
+1. Chỉ khởi chạy duy nhất Database PostgreSQL:
+   $ cd /home/duong/Projects
+   $ docker-compose up -d postgres-db
+
+2. Chỉ khởi chạy duy nhất Backend API (Docker tự động bật thêm Postgres nhờ depends_on):
+   $ cd /home/duong/Projects
+   $ docker-compose up -d backend-api
+
+3. Tắt duy nhất 1 dịch vụ cụ thể mà không làm ảnh hưởng các dịch vụ khác:
+   $ docker-compose stop backend-api
+   $ docker-compose rm -f backend-api
+
+4. Xem log của riêng 1 dịch vụ chỉ định:
+   $ docker-compose logs -f postgres-db
+================================================================================
+
+

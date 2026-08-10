@@ -16,6 +16,8 @@
 | 4     | Xóa sản phẩm & Gỡ bài đăng                 | Người bán (Seller) | Xóa bỏ các bài đăng chưa mở đấu giá khỏi hệ thống                           |
 | 5     | Chủ động hủy phiên đấu giá trước giờ G     | Người bán (Seller) | Dừng việc đấu giá tài sản khi có sự cố phát sinh trước thời điểm mở         |
 | 6     | Đăng lại phiên đấu giá đã hết hạn (Relist) | Người bán (Seller) | Tái khởi tạo phiên đấu giá cho sản phẩm không bán được để tìm người mua mới |
+| 7     | Xem đơn hàng bán được & Nhập mã vận đơn   | Người bán (Seller) | Xem đơn hàng đã được trả tiền, nhập mã bưu cục xuất hàng cho người mua      |
+
 
 ---
 

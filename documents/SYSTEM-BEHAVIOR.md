@@ -1,22 +1,18 @@
 # ĐẶC TẢ HÀNH VI HỆ THỐNG & CƠ CHẾ TỰ ĐỘNG (SYSTEM BEHAVIOR & AUTOMATED SCHEDULER)
 
-**Hệ thống:** Sàn Đấu Giá Trực Tuyến Đa Ngành Hàng  
-**Phiên bản đặc tả:** 1.0  
-**Tác giả:** Product Owner (PO) Team  
-
----
-
 ## 📊 BẢNG TÓM TẮT CÁC CƠ CHẾ TỰ ĐỘNG
 
 | STT   | Tên cơ chế                                  | Tác nhân vận hành       | Mục tiêu chính                                                               |
 |:------|:--------------------------------------------|:------------------------|:-----------------------------------------------------------------------------|
-| 1     | Vòng đời trạng thái dữ liệu (State Machine) | Quy tắc hệ thống        | Đảm bảo tính nhất quán và toàn vẹn trạng thái giữa Sản phẩm và Phiên đấu giá |
-| 2     | Robot quét trạng thái ngầm (Scheduler)      | Robot tự động (10s/lần) | Tự động kích hoạt mở phiên và đóng phiên chốt sổ đúng từng giây              |
+| 1     | Vòng đời trạng thái dữ liệu (State Machine) | Quy tắc hệ thống        | Đảm bảo tính nhất quán và toàn vẹn trạng thái giữa Sản phẩm, Phiên & Đơn hàng|
+| 2     | Robot quét trạng thái ngầm (Scheduler)      | Robot tự động (10s/lần) | Tự động kích hoạt mở/khóa phiên, sinh đơn và dọn đơn bùng 48h                |
 | 3     | Engine tự động đấu giá (Proxy Bidding)      | Thuật toán máy tính     | Đại diện người mua trả giá thông minh theo ủy quyền                          |
 | 4     | Thang bước giá tăng dần tự động             | Quy tắc tính toán       | Tự nâng bước giá tối thiểu tương thích với giá trị tài sản                   |
 | 5     | Chống bắn tỉa phút chót (Anti-Sniping)      | Quy tắc thời gian       | Kéo dài thêm 3 phút nếu có lượt bid ở phút chót để tạo sự bình đẳng          |
 | 6     | Cơ chế ẩn danh người tham gia (Masking)     | Quy tắc bảo mật         | Mã hóa tên người đặt giá để bảo vệ dữ liệu cá nhân                           |
 | 7     | Đồng bộ giao dịch tài nguyên mây (CDN Sync) | Quy tắc giao dịch       | Tự động dọn ảnh rác trên mây khi hỏng giao dịch DB                           |
+| 8     | Xử lý bùng tiền & Gậy vi phạm (3-Strikes)   | Quy tắc chế tài tự động | Tự động hủy đơn UNPAID quá 48h, phạt gậy và cấm đấu giá 90 ngày khi đủ 3 gậy |
+
 
 ---
 
@@ -52,6 +48,20 @@ Tự động kích hoạt khi có sự kiện tác động từ Người bán, Q
 | **ĐÃ DUYỆT (APPROVED)**               | **HẾT HẠN (EXPIRED)**                        | Hết giờ đấu giá nhưng không bán được (không có ai trả giá)  |
 | **BỊ TỪ CHỐI (REJECTED)**             | **ĐÃ HỦY (CANCELLED)**                       | Admin từ chối bài đăng, phiên đấu giá bị hủy bỏ             |
 
+- [Bảng ma trận chuyển đổi trạng thái Đơn hàng (`OrderStatus`)]:
+
+| Trạng thái hiện tại | Trạng thái tiếp theo | Người thực hiện           | Điều kiện hợp lệ                                                                  |
+|:--------------------|:---------------------|:--------------------------|:----------------------------------------------------------------------------------|
+| *(Chưa có đơn)*     | `UNPAID`             | Hệ thống (Robot / BuyNow) | Hết giờ đấu giá có `winner` hoặc Mua Ngay thành công, gán `paymentDeadline = 48h` |
+| `UNPAID`            | `PAID`               | Người mua (Buyer)         | Nhập đủ địa chỉ, SĐT hợp lệ và chọn `PaymentMethod`                               |
+| `UNPAID`            | `CANCELLED`          | Robot Scheduler           | Đơn `UNPAID` quá 48h (`paymentDeadline <= now`), phạt +1 Gậy Vi Phạm              |
+| `PAID`              | `SHIPPING`           | Người bán (Seller)        | Nhập đủ `courierName` và `trackingNumber` bắt buộc                                |
+| `SHIPPING`          | `COMPLETED`          | Người mua (Buyer)         | Kiểm tra hàng thành công và bấm nút xác nhận nhận hàng                            |
+
+- [Phân loại vai trò và trạng thái tài khoản người dùng]:
+  - `UserRole`: `USER` (Người dùng nền tảng C2C có thể bid và tạo sản phẩm bán), `ADMIN` (Quản trị viên kiểm duyệt bài đăng).
+  - `UserStatus`: `ACTIVE` (Tài khoản đang hoạt động), `SUSPENDED` (Tài khoản bị tạm ngừng).
+
 - [Khóa biến đổi trạng thái một chiều đối với phiên KẾT THÚC / ĐÃ HỦY] — vì khi phiên đã kết thúc hoặc bị hủy, không thể đảo ngược trạng thái về chờ duyệt để tránh làm gãy dữ liệu lịch sử.
 
 **Trường hợp đặc biệt**  
@@ -69,10 +79,10 @@ Tự động kích hoạt khi có sự kiện tác động từ Người bán, Q
 Hàng ngàn phiên đấu giá có mốc mở phiên và chốt phiên lẻ đến từng giây. Nếu dựa vào con người bấm nút mở/đóng thủ công, các phiên đấu giá sẽ bị mở trễ hoặc đóng trễ, gây khiếu nại về tính chính xác của thời gian.
 
 **Mục tiêu**  
-Sử dụng Robot ngầm quét liên tục 24/7 để tự động kích hoạt phiên sang trạng thái DIỄN RA và chốt sổ sang KẾT THÚC đúng từng milisecond.
+Sử dụng Robot ngầm quét liên tục 24/7 để tự động kích hoạt phiên sang trạng thái DIỄN RA, chốt sổ sang KẾT THÚC đúng từng milisecond, sinh đơn hàng và dọn dẹp đơn bùng tiền quá 48h.
 
 **Đối tượng sử dụng / Điều kiện kích hoạt**  
-Bộ đếm thời gian tự động của hệ thống, định kỳ kích hoạt **10 giây một lần (fixedRate = 10,000ms)**.
+Bộ đếm thời gian tự động của hệ thống, định kỳ kích hoạt **10 giây một lần (fixedRate = 10,000ms)** tại `AuctionScheduler.java`.
 
 **Luồng thực hiện**  
 1. Cứ mỗi 10 giây, Robot ngầm thức dậy và lấy mốc thời gian hiện tại (`now`).
@@ -220,12 +230,12 @@ Tự động áp dụng khi trả về dữ liệu lịch sử thầu cho công 
 **Quy tắc nghiệp vụ**  
 - [Bảng quy tắc ẩn danh mã hóa tên]:
 
-| Tên tài khoản gốc (`username`) | Tên mã hóa hiển thị công khai (`maskedBidderName`) | Ghi chú |
-| :--- | :--- | :--- |
-| `duong` | `d***g` | Giữ ký tự đầu `d` và cuối `g` |
-| `admin_seller` | `a***r` | Giữ ký tự đầu `a` và cuối `r` |
-| `ab` *(<= 2 ký tự)* | `a***` | Giữ ký tự đầu `a` và thêm `***` |
-| `null` hoặc rỗng | `u***r` | Tên mặc định đại diện người dùng |
+| Tên tài khoản gốc (`username`) | Tên mã hóa hiển thị công khai (`maskedBidderName`) | Ghi chú                          |
+|:-------------------------------|:---------------------------------------------------|:---------------------------------|
+| `duong`                        | `d***g`                                            | Giữ ký tự đầu `d` và cuối `g`    |
+| `admin_seller`                 | `a***r`                                            | Giữ ký tự đầu `a` và cuối `r`    |
+| `ab` *(<= 2 ký tự)*            | `a***`                                             | Giữ ký tự đầu `a` và thêm `***`  |
+| `null` hoặc rỗng               | `u***r`                                            | Tên mặc định đại diện người dùng |
 
 **Trường hợp đặc biệt**  
 - Tài khoản đấu giá bị null dữ liệu: Hệ thống gán tên ẩn danh mặc định `u***r`.
@@ -267,6 +277,34 @@ Tự động kích hoạt trong các thao tác Tạo sản phẩm, Sửa ảnh v
 
 ---
 
+### Xử lý bùng tiền & Gậy vi phạm (Unpaid Order Auto-Cancel & 3-Strikes Penalty)
+
+**Bài toán kinh doanh**  
+Tình trạng bùng hàng (thắng đấu giá nhưng không trả tiền) gây thiệt hại lớn cho người bán và tổn hại uy tín của sàn. Cần một chế tài tự động răn đe mạnh mẽ nhưng vẫn đảm bảo tính công bằng.
+
+**Mục tiêu**  
+Tự động hóa hoàn toàn luồng dọn dẹp đơn bùng quá hạn 48h, tính gậy phạt và khóa cấm tài khoản vi phạm.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Hệ thống Robot Scheduler (`AuctionScheduler`) quét định kỳ 10s và `BidValidator`.
+
+**Luồng thực hiện**  
+1. **Thời hạn chót 48 tiếng (`paymentDeadline`)**: Đơn hàng `UNPAID` được sinh ra tự động kèm mốc hết hạn `createdAt + 48h`.
+2. **Tự động hủy đơn & Phạt gậy (`AuctionScheduler`)**: Robot ngầm quét các đơn `UNPAID` có `paymentDeadline <= now`. Tự động chuyển đơn sang **`CANCELLED`** và phạt **+1 Gậy Vi Phạm (`unpaidStrikeCount`)** cho người mua.
+3. **Án phạt 3 Gậy (3-Strikes Rule)**: Khi `unpaidStrikeCount >= 3`, hệ thống tự động gán `bannedUntil = now + 90 days`, cấm đặt giá / mua ngay trong 90 ngày.
+4. **Cơ chế Tự động Mở Khóa Lười (Lazy Unban Check)**: Khi qua 90 ngày (`bannedUntil <= now`), ở lần bấm đặt giá tiếp theo, `BidValidator` tự động gỡ cấm (`bannedUntil = null`) và reset gậy về 0.
+
+**Quy tắc nghiệp vụ**  
+- [Tự động hủy đơn UNPAID quá 48h] — giải phóng trạng thái đơn và ghi nhận vết vi phạm.
+- [Phạt cấm đấu giá 90 ngày khi bùng đủ 3 lần] — răn đe các tài sản có ý định bùng hàng lặp lại.
+- [Lazy Unban Check] — mở khóa cấm tức thì mà không cần chạy thêm background thread ngầm.
+
+**Liên quan tới**  
+- [FUNCTIONAL-SPEC-GUEST-BIDDER.md](./FUNCTIONAL-SPEC-GUEST-BIDDER.md#tu-dong-huy-don-bung-tien-qua-48h--phat-gay-vi-pham-unpaid-order-auto-cancel--3-strikes-penalty)
+
+
+---
+
 ### Vòng đời trạng thái Đơn Hàng hậu đấu giá (Post-Auction Order Lifecycle)
 
 **Bài toán kinh doanh**  
@@ -286,12 +324,12 @@ Hệ thống tự động kích hoạt khi có Winner, Người mua Checkout, Ng
 
 **Bảng quy tắc chuyển đổi hợp lệ (`OrderStatus`)**:
 
-| Trạng thái hiện tại | Trạng thái tiếp theo | Người thực hiện | Điều kiện hợp lệ |
-| :--- | :--- | :--- | :--- |
-| *(Chưa có đơn)* | `UNPAID` | Hệ thống (Robot / BuyNow) | Hết giờ đấu giá có `winner` hoặc Người mua bấm `BuyNow` thành công |
-| `UNPAID` | `PAID` | Người mua (Buyer) | Nhập đủ địa chỉ, SĐT hợp lệ và chọn `PaymentMethod` |
-| `PAID` | `SHIPPING` | Người bán (Seller) | Nhập đủ `courierName` và `trackingNumber` bắt buộc |
-| `SHIPPING` | `COMPLETED` | Người mua (Buyer) | Kiểm tra hàng thành công và bấm nút xác nhận nhận hàng |
+| Trạng thái hiện tại | Trạng thái tiếp theo | Người thực hiện           | Điều kiện hợp lệ                                                   |
+|:--------------------|:---------------------|:--------------------------|:-------------------------------------------------------------------|
+| *(Chưa có đơn)*     | `UNPAID`             | Hệ thống (Robot / BuyNow) | Hết giờ đấu giá có `winner` hoặc Người mua bấm `BuyNow` thành công |
+| `UNPAID`            | `PAID`               | Người mua (Buyer)         | Nhập đủ địa chỉ, SĐT hợp lệ và chọn `PaymentMethod`                |
+| `PAID`              | `SHIPPING`           | Người bán (Seller)        | Nhập đủ `courierName` và `trackingNumber` bắt buộc                 |
+| `SHIPPING`          | `COMPLETED`          | Người mua (Buyer)         | Kiểm tra hàng thành công và bấm nút xác nhận nhận hàng             |
 
 **Quy tắc nghiệp vụ**  
 - [Không được phép xuất hàng khi đơn ở trạng thái UNPAID] — ném lỗi `CANNOT_SHIP_UNPAID_ORDER` để bảo vệ Seller.

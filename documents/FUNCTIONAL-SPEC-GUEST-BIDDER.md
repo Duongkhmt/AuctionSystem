@@ -16,6 +16,10 @@
 | 4     | Đặt giá thủ công & Đặt giá tự động (Proxy Bid) | Người mua (Bidder)      | Tham gia cạnh tranh mua tài sản hoặc ủy quyền đấu giá   |
 | 5     | Mua ngay sản phẩm với giá cố định (Buy Now)    | Người mua (Bidder)      | Sở hữu lập tức tài sản mà không cần chờ đấu giá hết giờ |
 | 6     | Xem lịch sử đặt giá công khai                  | Khách vãng lai / Bidder | Theo dõi độ minh bạch của phiên và thứ tự các bước giá  |
+| 7     | Xem sản phẩm trúng thầu & Checkout thanh toán  | Người mua (Bidder)      | Quản lý đơn trúng thầu, nhập địa chỉ và thanh toán      |
+| 8     | Xác nhận đã nhận được hàng (Confirm Received)  | Người mua (Bidder)      | Xác nhận hoàn tất đơn hàng và giải ngân cho người bán   |
+| 9     | Tự động hủy đơn bùng tiền 48h & Phạt 3-Strikes | Hệ thống tự động        | Tự động hủy đơn quá 48h, phạt gậy và cấm đấu giá 90 ngày|
+
 
 ---
 
@@ -259,4 +263,35 @@ Người mua khi đơn hàng đang ở trạng thái **`SHIPPING`**.
 
 **Quy tắc nghiệp vụ**  
 - [Chỉ cho phép xác nhận khi đơn ở trạng thái SHIPPING] — không thể bấm xác nhận khi hàng chưa được Seller gửi đi.
+
+---
+
+### Tự động hủy đơn bùng tiền quá 48h & Phạt Gậy Vi Phạm (Unpaid Order Auto-Cancel & 3-Strikes Penalty)
+
+**Bài toán kinh doanh**  
+Người mua thắng đấu giá nhưng cố tình không thực hiện Checkout thanh toán (bùng hàng) gây thiệt hại nặng nề cho người bán và cản trở việc lưu thông hàng hóa trên sàn. Cần một chế tài răn đe tự động nghiêm khắc nhưng công bằng để bảo vệ sự lành mạnh của hệ thống.
+
+**Mục tiêu**  
+Tự động hóa hoàn toàn luồng dọn dẹp đơn bùng quá hạn 48h, tính điểm gậy vi phạm và cấm tham gia đấu giá đối với các tài sản tiếp theo.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Hệ thống Robot Scheduler (`AuctionScheduler`) chạy ngầm định kỳ 10s và `BidValidator`.
+
+**Luồng thực hiện**  
+1. Khi có người thắng cuộc hoặc Mua Ngay, hệ thống sinh Đơn hàng ở trạng thái `UNPAID` kèm thời hạn chót 48 tiếng (`paymentDeadline = now + 48h`).
+2. Cứ mỗi 10 giây, Robot `AuctionScheduler` quét các đơn `UNPAID` có `paymentDeadline <= now`.
+3. Hệ thống chuyển trạng thái đơn hàng sang **`CANCELLED`**.
+4. Hệ thống tính cộng **+1 Gậy Vi Phạm (`unpaidStrikeCount`)** cho tài khoản Người mua bùng tiền.
+5. NẾU tổng số gậy vi phạm `unpaidStrikeCount >= 3` ➔ Hệ thống tự động gán thời hạn phạt 90 ngày (`bannedUntil = now + 90 days`).
+6. Khi người dùng bị cấm đấu giá thực hiện đặt giá mới trong 90 ngày ➔ `BidValidator` ném lỗi `USER_BANNED_FROM_BIDDING` (HTTP 403).
+7. NẾU đã trôi qua 90 ngày (`bannedUntil <= now`) ➔ Ở lần đặt giá kế tiếp, `BidValidator` tự động xóa án cấm (`bannedUntil = null`) và reset gậy về 0 (Lazy Unban Check).
+
+**Quy tắc nghiệp vụ**  
+- [Tự động hủy đơn UNPAID quá 48h] — giải phóng trạng thái phiên và ghi nhận vết vi phạm cho tài khoản bùng tiền.
+- [Án phạt 3 Gậy Vi Phạm] — cấm quyền đấu giá 90 ngày khi bùng tiền 3 lần liên tiếp.
+- [Lazy Unban Check] — mở cấm tự động mà không tốn thêm background job chạy ngầm.
+
+**Liên quan tới**  
+- [SYSTEM-BEHAVIOR.md](./SYSTEM-BEHAVIOR.md#xu-ly-bung-tien-ga-vi-pham-unpaid-order-auto-cancel-3-strikes-penalty)
+
 
