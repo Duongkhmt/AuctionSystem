@@ -81,7 +81,7 @@ public class ProductResponseHelper {
                 .map(Product::getId)
                 .toList();
 
-        // 3. Bắn 1 câu SQL Batch (findByProduct_IdIn) lấy hết các Auction và nhóm thành Map<productId, Auction> trong RAM
+        // 3. Bắn 1 câu SQL Batch (findByProduct_IdIn) lấy hết các Auction và nhóm thành Map<productId, Auction> trong RAMb tìm cho nhanh
         Map<Long, Auction> auctionByProductId = auctionRepository
                 .findByProduct_IdIn(productIds)
                 .stream()

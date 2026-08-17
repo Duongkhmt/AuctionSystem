@@ -48,11 +48,9 @@ public interface ProductMapper {
     @Mapping(target = "bidStep", source = "auction.bidStep")
     @Mapping(target = "reservePrice", source = "auction.reservePrice")
     @Mapping(target = "buyNowPrice", source = "auction.buyNowPrice")
-    
     // Mapping thông tin Người Thắng Cuộc (Winner ID và Tên mã hóa)
     @Mapping(target = "winnerId", source = "auction.winner.id")
     @Mapping(target = "maskedWinnerName", source = "auction.winner.username", qualifiedByName = "maskUsername")
-
     @Mapping(target = "startTime", source = "auction.startTime")
     @Mapping(target = "endTime", source = "auction.endTime")
     @Mapping(target = "auctionStatus", source = "auction.status")

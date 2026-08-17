@@ -14,6 +14,7 @@ import java.util.Map;
 @Setter
 public class ProductResponseDTO implements Serializable {
     private static final long serialVersionUID = 1L;
+    //Product
     private Long productId;
     private Long sellerId;
     private Long categoryId;

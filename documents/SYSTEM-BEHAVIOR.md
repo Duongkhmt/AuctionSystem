@@ -12,6 +12,7 @@
 | 6     | Cơ chế ẩn danh người tham gia (Masking)     | Quy tắc bảo mật         | Mã hóa tên người đặt giá để bảo vệ dữ liệu cá nhân                           |
 | 7     | Đồng bộ giao dịch tài nguyên mây (CDN Sync) | Quy tắc giao dịch       | Tự động dọn ảnh rác trên mây khi hỏng giao dịch DB                           |
 | 8     | Xử lý bùng tiền & Gậy vi phạm (3-Strikes)   | Quy tắc chế tài tự động | Tự động hủy đơn UNPAID quá 48h, phạt gậy và cấm đấu giá 90 ngày khi đủ 3 gậy |
+| 9     | Cơ chế Xử lý Đa Ngôn Ngữ (i18n Localization)| Bộ giải mã Spring MVC   | Tự động dịch câu thông báo lỗi theo Header Accept-Language của Client       |
 
 
 ---
@@ -334,4 +335,69 @@ Hệ thống tự động kích hoạt khi có Winner, Người mua Checkout, Ng
 **Quy tắc nghiệp vụ**  
 - [Không được phép xuất hàng khi đơn ở trạng thái UNPAID] — ném lỗi `CANNOT_SHIP_UNPAID_ORDER` để bảo vệ Seller.
 - [Không được phép xác nhận nhận hàng khi đơn chưa ở trạng thái SHIPPING] — ném lỗi `ORDER_NOT_IN_SHIPPING_STATE` để đảm bảo luồng bưu cục.
+
+---
+
+### Cơ chế Xử lý Đa Ngôn Ngữ (i18n & Localization Flow)
+
+**Bài toán kinh doanh**  
+Hệ thống sàn đấu giá phục vụ cho nhiều đối tượng người dùng (Bao gồm cả người mua/bán trong nước và quốc tế). Nếu thông báo lỗi bị gán cứng (hardcode) bằng Tiếng Việt hoặc Tiếng Anh, trải nghiệm người dùng sẽ bị ảnh hưởng và hệ thống khó mở rộng sang các thị trường quốc tế mới.
+
+**Mục tiêu**  
+Phân tách hoàn toàn văn bản hiển thị khỏi mã nguồn nghiệp vụ Java. Tự động nhận diện ngôn ngữ qua Header `Accept-Language` của Client và dịch các câu thông báo lỗi (`ApplicationException` & `@Valid`) sang ngôn ngữ tương ứng (`vi`, `en`).
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Tự động kích hoạt tại tầng `GlobalExceptionHandler` cho mọi API Request gửi đến hệ thống khi có ngoại lệ phát sinh.
+
+**Sơ đồ Luồng Thực Thi End-to-End (Architectural Flow)**
+```text
+[ Frontend Angular ] ──► [ Interceptor đính kèm Accept-Language: en ] ──► [ HTTP Request ]
+                                                                                   │
+                                                                                   ▼
+[ ErrorResponse JSON ] ◄── [ GlobalExceptionHandler ] ◄── [ MessageSource ] ◄── [ AcceptHeaderLocaleResolver ]
+  (Message đã dịch)        (Tra cứu Key = ErrorCode)       (Đọc properties)     (Lấy Locale từ Header)
+```
+
+**Luồng thực hiện chi tiết**  
+1. **Client gửi Header**: Frontend Angular interceptor (`apiHeaderInterceptor`) tự động lấy ngôn ngữ từ `LanguageService` và đính kèm `Accept-Language: vi` (hoặc `en`) vào mọi HTTP Request.
+2. **Spring Boot Giải Mã Locale**: `AcceptHeaderLocaleResolver` tự động phân tích Header và đưa đối tượng `Locale` vào `LocaleContextHolder`.
+3. **Ngoại Lệ Phát Sinh**: Khi xảy ra lỗi nghiệp vụ (ví dụ `throw new ApplicationException(ErrorCode.CANNOT_BID_OWN_PRODUCT)`), `GlobalExceptionHandler` bắt lại ngoại lệ.
+4. **Tra Cứu Thông Điệp Đa Ngôn Ngữ**: `GlobalExceptionHandler` gọi `messageSource.getMessage(errorCode.name(), null, errorCode.getMessage(), locale)` để tra cứu Key `CANNOT_BID_OWN_PRODUCT` từ file `messages_en.properties` hoặc `messages_vi.properties`.
+5. **Trả Phản Hồi Cho Client**: Thông điệp lỗi đã dịch được đóng gói vào `ErrorResponse` dạng JSON trả về cho Frontend.
+
+**Chi Tiết Cấu Hình & Mã Nguồn Bắt Buộc Document**
+
+1. **Cấu hình Spring Security / MVC (`WebConfig.java`)**:
+   - `AcceptHeaderLocaleResolver`: Đặt ngôn ngữ mặc định là `vi` và khai báo danh sách Locale hỗ trợ (`vi`, `en`).
+   - `ResourceBundleMessageSource`: Cấu hình basename `"messages"`, mã hóa `UTF-8` và `setUseCodeAsDefaultMessage(true)`.
+
+2. **Cấu trúc Tệp Ngôn Ngữ (`messages_vi.properties` & `messages_en.properties`)**:
+   - Tệp Tiếng Việt (`src/main/resources/messages_vi.properties`):
+     ```properties
+     CANNOT_BID_OWN_PRODUCT=Người bán không được tự đặt giá sản phẩm của chính mình
+     BID_AMOUNT_TOO_LOW=Mức giá đặt phải lớn hơn hoặc bằng giá hiện tại cộng bước giá tối thiểu
+     ```
+   - Tệp Tiếng Anh (`src/main/resources/messages_en.properties`):
+     ```properties
+     CANNOT_BID_OWN_PRODUCT=Sellers are not allowed to bid on their own products
+     BID_AMOUNT_TOO_LOW=Bid amount must be greater than or equal to current price plus minimum bid increment
+     ```
+
+3. **Tầng Xử Lý Ngoại Lệ Tập Trung (`GlobalExceptionHandler.java`)**:
+   - Inject `MessageSource` qua Constructor (`@RequiredArgsConstructor`).
+   - Đọc `LocaleContextHolder.getLocale()` và tra cứu câu thông báo tùy biến theo `ErrorCode.name()`.
+
+4. **Đồng Bộ Tầng Frontend Angular (`AuctionSystemUI`)**:
+   - `LanguageService`: Quản lý Signal `currentLang` (`'vi'` | `'en'`) và lưu `localStorage`.
+   - `apiHeaderInterceptor`: Đính kèm `Accept-Language: currentLang()` cho tất cả HTTP Request gửi đi.
+   - `MainLayoutComponent`: Thêm nút bấm chuyển đổi nhanh `🇻🇳 VN` / `🇬🇧 EN` trên thanh Header.
+
+**Quy tắc nghiệp vụ**  
+- [Tất cả Message Key phải trùng khớp 100% với tên Enum `ErrorCode`] — giúp dễ quản lý và tra cứu.
+- [Không được nhận tham số Locale ở Service hay Validator] — giữ sạch 100% tầng xử lý nghiệp vụ.
+- [Cơ chế Fallback an toàn] — NẾU thiếu Key trong file `.properties`, tự động lấy thông điệp Tiếng Việt mặc định khai báo trong Enum `ErrorCode`.
+
+**Liên quan tới**  
+- `ErrorCode.java`, `GlobalExceptionHandler.java`, `WebConfig.java`, `messages_vi.properties`, `messages_en.properties`, `language.service.ts`, `api-header.interceptor.ts`.
+
 

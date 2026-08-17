@@ -22,11 +22,14 @@ public class OrderResponseHelper {
 
     // 1. Đóng gói DTO cho 1 đơn hàng trúng thầu của Người Mua
     public WonAuctionResponseDTO buildWonAuctionDTO(Order order) {
+        //Gọi mapstruct map thuộc tính cơ bản
         WonAuctionResponseDTO dto = orderMapper.toWonAuctionDTO(order);
+        //Tự lấy ảnh đại diện cho sản phẩm
         List<ProductImage> images = order.getProduct().getImages();
         if (images != null && !images.isEmpty()) {
             dto.setProductImage(images.get(0).getImageUrl());
         }
+
         return dto;
     }
 

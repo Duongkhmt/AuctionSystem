@@ -114,6 +114,7 @@ class OrderServiceTest {
             given(userRepository.existsById(bidderId)).willReturn(true);
             given(orderRepository.findByBuyer_IdOrderByCreatedAtDesc(bidderId)).willReturn(List.of(sampleOrder));
 
+            //Tạo đối tượng dto giả
             WonAuctionResponseDTO dto = mock(WonAuctionResponseDTO.class);
             given(orderResponseHelper.buildWonAuctionDTOList(List.of(sampleOrder))).willReturn(List.of(dto));
 

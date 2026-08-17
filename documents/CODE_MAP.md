@@ -50,8 +50,8 @@
 Cấu trúc cây thư mục nguồn thực tế trong `src/main/java/DuAnTrainning/AuctionSystem/`:
 
 ```text
-DuAnTrainning/AuctionSystem/
-├── DuAnTrainningApplication.java       # [Entry Point] Class khởi chạy ứng dụng & bật Scheduling
+com/duong/auction/system/
+├── AuctionSystemApplication.java       # [Entry Point] Class khởi chạy ứng dụng & bật Scheduling
 ├── config/
 │   ├── CloudinaryConfig.java           # Configuration Bean tạo instance Cloudinary SDK
 │   └── SecurityConfig.java             # Configuration Spring Security & CORS

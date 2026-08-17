@@ -4,6 +4,7 @@ import com.duong.auction.system.entity.Auction;
 import com.duong.auction.system.enums.AuctionStatus;
 import com.duong.auction.system.enums.AuctionType;
 import com.duong.auction.system.enums.ProductStatus;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
@@ -15,12 +16,25 @@ import java.util.List;
 import java.util.Optional;
 
 public interface AuctionRepository extends JpaRepository<Auction, Long> {
-
+    //Tìm phiên đấu giá của 1 sản phẩm
     Optional<Auction> findByProduct_Id(Long productId);
 
+//
+//     Truy vấn Batch lấy danh sách Auction theo danh sách productIds,
+//     đồng thời KHỚP VỚI BẢNG USERS (winner) ngay trong 1 câu SQL duy nhất bằng LEFT JOIN FETCH.
+//     Sử dụng LEFT JOIN để lấy cả những phiên chưa có Người thắng (winner = null).
+//    List<Auction> findByProduct_IdIn(Collection<Long> productIds);
+//    @Query("SELECT a FROM Auction a LEFT JOIN FETCH a.winner WHERE a.product.id IN :productIds")
+//    List<Auction> findByProductIdInWithWinner(@Param("productIds") Collection<Long> productIds);
+
+    //Sử dụng entity graph
+    @EntityGraph(attributePaths = {"winner"})
     List<Auction> findByProduct_IdIn(Collection<Long> productIds);
+
     void deleteByProduct_Id(Long productId);
+
     // Tìm các phiên đang RUNNING (không thuộc BUY_NOW) đã hết thời gian endTime
+    @EntityGraph(attributePaths = {"product", "product.seller"})
     List<Auction> findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(
             AuctionStatus status,
             AuctionType auctionType,
@@ -48,6 +62,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
     @Query("UPDATE Auction a SET a.status = :endedStatus " +
             "WHERE a.status = :runningStatus " +
             "AND a.endTime <= :now")
+    //TRả về số Record đã cập nhật ở trên
     int autoEndAuctions(
             @Param("now") LocalDateTime now,
             @Param("runningStatus") AuctionStatus runningStatus,

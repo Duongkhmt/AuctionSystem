@@ -10,7 +10,17 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "orders")
+@Table(
+        name = "orders",
+        indexes = {
+                // Tối ưu cho Người Mua tìm đơn trúng thầu (findByBuyer_IdOrderByCreatedAtDesc)
+                @Index(name = "idx_order_buyer", columnList = "buyer_id, created_at DESC"),
+                // Tối ưu cho Người Bán tìm đơn bán được (findBySeller_IdOrderByCreatedAtDesc)
+                @Index(name = "idx_order_seller", columnList = "seller_id, created_at DESC"),
+                // Tối ưu cho Robot quét hủy đơn bùng quá 48h (findByStatusAndPaymentDeadlineLessThanEqual)
+                @Index(name = "idx_order_status_deadline", columnList = "status, payment_deadline")
+        }
+)
 @Getter
 @Setter
 @NoArgsConstructor

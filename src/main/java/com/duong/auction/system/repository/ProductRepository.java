@@ -57,6 +57,8 @@ public interface ProductRepository extends JpaRepository<Product, Long> {
     """)
     List<Product> findAllApprovedProductsSorted();
 
+    //Lấy danh sách sản phẩm của người bán mới nhất sắp xếp giảm dần
     List<Product> findBySeller_IdOrderByCreatedAtDesc(Long sellerId);
+    //Lấy danh sách sản phẩm có trạng thái ? sắp sếp giảm dần
     List<Product> findByStatusOrderByCreatedAtDesc(ProductStatus status);
 }
