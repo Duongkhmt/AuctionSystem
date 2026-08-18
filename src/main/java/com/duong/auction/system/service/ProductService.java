@@ -20,6 +20,7 @@ import com.duong.auction.system.service.helper.ProductResponseHelper;
 import com.duong.auction.system.validator.AuctionValidator;
 import com.duong.auction.system.validator.ProductImageValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import org.springframework.transaction.support.TransactionSynchronization;
@@ -123,6 +124,7 @@ public class ProductService {
     }
 
     // Lấy chi tiết 1 sản phẩm theo productId
+    @Cacheable(value = "auctions", key = "#productId")
     @Transactional(readOnly = true)
     public ProductResponseDTO getProductWithAuctionById(Long productId) {
         Product product = productRepository.findById(productId)

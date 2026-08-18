@@ -98,12 +98,12 @@ class AuctionSchedulerTest {
                     .willReturn(List.of(sampleEnglishAuction));
 
             Bid highestBid = new Bid();
+            highestBid.setAuction(sampleEnglishAuction);
             highestBid.setBidder(sampleWinner);
             highestBid.setBidAmount(BigDecimal.valueOf(500000));
 
-            given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(sampleEnglishAuction.getId()))
-                    .willReturn(Optional.of(highestBid));
-            given(orderRepository.existsByAuction_Id(sampleEnglishAuction.getId())).willReturn(false);
+            given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
+            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
 
             Order mockOrder = mock(Order.class);
             given(orderMapper.toEntity(sampleEnglishAuction, sampleWinner, highestBid.getBidAmount())).willReturn(mockOrder);
@@ -130,11 +130,12 @@ class AuctionSchedulerTest {
                     .willReturn(List.of(sampleReserveAuction));
 
             Bid highestBid = new Bid();
+            highestBid.setAuction(sampleReserveAuction);
             highestBid.setBidder(sampleWinner);
             highestBid.setBidAmount(BigDecimal.valueOf(800000)); // 800k < 1M
 
-            given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(sampleReserveAuction.getId()))
-                    .willReturn(Optional.of(highestBid));
+            given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
+            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
 
             given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
@@ -156,12 +157,12 @@ class AuctionSchedulerTest {
                     .willReturn(List.of(sampleReserveAuction));
 
             Bid highestBid = new Bid();
+            highestBid.setAuction(sampleReserveAuction);
             highestBid.setBidder(sampleWinner);
             highestBid.setBidAmount(BigDecimal.valueOf(1200000)); // 1.2M >= 1M
 
-            given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(sampleReserveAuction.getId()))
-                    .willReturn(Optional.of(highestBid));
-            given(orderRepository.existsByAuction_Id(sampleReserveAuction.getId())).willReturn(false);
+            given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
+            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
 
             Order mockOrder = mock(Order.class);
             given(orderMapper.toEntity(sampleReserveAuction, sampleWinner, highestBid.getBidAmount())).willReturn(mockOrder);

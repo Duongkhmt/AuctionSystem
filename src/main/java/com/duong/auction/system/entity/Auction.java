@@ -9,7 +9,13 @@ import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Entity
-@Table(name = "auctions")
+@Table(
+        name = "auctions",
+        indexes = {
+                // 🟢 Tối ưu Robot 10s quét phiên hết giờ (findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual)
+                @Index(name = "idx_auction_status_endtime", columnList = "status, end_time")
+        }
+)
 @Getter @Setter
 public class Auction {
 

@@ -20,6 +20,8 @@ import com.duong.auction.system.service.helper.BidResponseHelper;
 import com.duong.auction.system.service.helper.ProxyBiddingEngineHelper;
 import com.duong.auction.system.validator.BidValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -48,7 +50,7 @@ public class BiddingService {
     // =========================================================================
     // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) & ĐỘNG CƠ PROXY BIDDING TỰ ĐỘNG
     // =========================================================================
-
+    @CacheEvict(value = "bid_history", key = "#auctionId")
     @Transactional
     public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
         // 1. Tìm thông tin Người Đấu Giá (Bidder) trong hệ thống
@@ -91,7 +93,7 @@ public class BiddingService {
     // =========================================================================
     // 2. NGHIỆP VỤ XEM LỊCH SỬ ĐẤU GIÁ CÔNG KHAI (ẨN DANH TÊN)
     // =========================================================================
-
+    @Cacheable(value = "bid_history", key = "#auctionId")
     @Transactional(readOnly = true)
     public List<BidHistoryResponseDTO> getAuctionBidHistory(Long auctionId) {
         // 1. Kiểm tra sự tồn tại của phiên đấu giá

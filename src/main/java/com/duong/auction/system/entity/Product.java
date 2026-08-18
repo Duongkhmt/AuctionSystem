@@ -13,7 +13,13 @@ import java.util.List;
 import java.util.Map;
 
 @Entity
-@Table(name = "products")
+@Table(
+        name = "products",
+        indexes = {
+                // 🟢 Tối ưu Cổng Người Bán tải danh sách bài đăng (findProductsBySellerIdSorted)
+                @Index(name = "idx_product_seller_created", columnList = "seller_id, created_at DESC")
+        }
+)
 @Getter @Setter
 public class Product {
 
