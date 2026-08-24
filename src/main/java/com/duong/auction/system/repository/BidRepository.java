@@ -46,4 +46,6 @@ public interface BidRepository extends JpaRepository<Bid, Long> {
 //    @EntityGraph(attributePaths = {"bidder"})
     List<Bid> findHighestBidsByAuctionIdIn(@Param("auctionIds") Collection<Long> auctionIds);
 
+    // 🟢 Kiểm tra Idempotency chống ghi trùng DB từ Redis Stream Worker
+    boolean existsByEventId(String eventId);
 }

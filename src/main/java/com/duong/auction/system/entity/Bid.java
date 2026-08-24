@@ -47,6 +47,9 @@ public class Bid {
     @Column(name = "is_auto_bid", nullable = false)
     private boolean autoBid = false;
 
+    @Column(name = "event_id", unique = true)
+    private String eventId;
+
     @CreationTimestamp
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt;
