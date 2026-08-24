@@ -2,8 +2,10 @@ package com.duong.auction.system.service;
 
 import com.cloudinary.Cloudinary;
 import com.cloudinary.utils.ObjectUtils;
+import com.duong.auction.system.config.CloudinaryProperties;
 import com.duong.auction.system.exception.ApplicationException;
 import com.duong.auction.system.exception.ErrorCode;
+import com.duong.auction.system.service.helper.CloudinarySdkHelper;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
@@ -22,8 +24,8 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class CloudinaryService {
 
-    private static final String PRODUCT_IMAGE_FOLDER = "auction-products";
     private final Cloudinary cloudinary;
+    private final CloudinaryProperties cloudinaryProperties;
 
     // =========================================================================
     // 1. UPLOAD SONG SONG TẤT CẢ ẢNH CÙNG 1 LÚC (PARALLEL ASYNC UPLOAD)
@@ -64,16 +66,15 @@ public class CloudinaryService {
     public UploadedImage uploadSingle(MultipartFile imageFile) {
         try {
             // 1. Gọi Cloudinary SDK upload mảng byte của file ảnh
-            Map<?, ?> result = cloudinary.uploader().upload(imageFile.getBytes(), ObjectUtils.asMap(
-                    "folder", PRODUCT_IMAGE_FOLDER,
-                    "resource_type", "image",
-                    "allowed_formats", List.of("jpg", "jpeg", "png", "webp")
-            ));
+            Map<?, ?> result = cloudinary.uploader().upload(
+                    imageFile.getBytes(),
+                    CloudinarySdkHelper.buildUploadParams(cloudinaryProperties)
+            );
 
             // 2. Trả về Record chứa secureUrl công khai và publicId dùng để xóa sau này
             return new UploadedImage(
-                    result.get("secure_url").toString(),
-                    result.get("public_id").toString()
+                    CloudinarySdkHelper.extractUrl(result),
+                    CloudinarySdkHelper.extractId(result)
             );
         } catch (IOException e) {
             throw new RuntimeException("Upload failed for file: " + imageFile.getOriginalFilename(), e);
@@ -86,10 +87,10 @@ public class CloudinaryService {
     public void deleteByPublicId(String publicId) {
         if (publicId == null || publicId.isBlank()) return;
         try {
-            cloudinary.uploader().destroy(publicId, ObjectUtils.asMap(
-                    "resource_type", "image",
-                    "invalidate", true
-            ));
+            cloudinary.uploader().destroy(
+                    publicId,
+                    CloudinarySdkHelper.buildDestroyParams(cloudinaryProperties)
+            );
         } catch (IOException | RuntimeException ignored) {
         }
     }
