@@ -1,5 +1,6 @@
 package com.duong.auction.system.entity;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import com.duong.auction.system.enums.ProductStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -57,5 +58,5 @@ public class Product {
     private String rejectionReason;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

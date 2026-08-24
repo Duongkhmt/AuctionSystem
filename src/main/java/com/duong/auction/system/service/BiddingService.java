@@ -27,6 +27,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
@@ -42,6 +43,7 @@ public class BiddingService {
     private final BidMapper bidMapper;
     private final OrderRepository orderRepository;
     private final OrderMapper orderMapper;
+    private final Clock clock;
 
     private final ProxyBiddingEngineHelper proxyBiddingEngineHelper;
     private final BidResponseHelper bidResponseHelper;
@@ -76,7 +78,7 @@ public class BiddingService {
         );
 
         // 6. Xử lý Soft-close Anti-sniping: Nếu có bid hợp lệ trong 3 phút cuối -> Tự động kéo dài thời gian kết thúc thêm 3 phút
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         boolean timeExtended = false;
         if (auction.getEndTime().minusMinutes(ANTI_SNIPING_WINDOW_MINUTES).isBefore(now)) {
             auction.setEndTime(auction.getEndTime().plusMinutes(EXTENSION_MINUTES));
@@ -147,7 +149,7 @@ public class BiddingService {
         // 8. TỰ ĐỘNG SINH ĐƠN HÀNG HẬU MUA NGAY (TRẠNG THÁI UNPAID))!
         if (!orderRepository.existsByAuction_Id(auction.getId())) {
             Order order = orderMapper.toEntity(auction, bidder, actualPrice);
-            order.setPaymentDeadline(LocalDateTime.now().plusHours(48));
+            order.setPaymentDeadline(LocalDateTime.now(clock).plusHours(48));
             orderRepository.save(order);
         }
 

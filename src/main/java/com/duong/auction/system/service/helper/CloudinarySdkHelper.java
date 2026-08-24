@@ -16,7 +16,8 @@ public final class CloudinarySdkHelper {
     private CloudinarySdkHelper() {} // Private constructor
 
     // 🟢 1. Helper đóng gói tham số Upload
-    public static Map<?, ?> buildUploadParams(CloudinaryProperties props) {
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> buildUploadParams(CloudinaryProperties props) {
         return ObjectUtils.asMap(
                 "folder", props.getFolder(),
                 "resource_type", props.getResourceType(),
@@ -25,7 +26,8 @@ public final class CloudinarySdkHelper {
     }
 
     // 🟢 2. Helper đóng gói tham số Xóa (Destroy)
-    public static Map<?, ?> buildDestroyParams(CloudinaryProperties props) {
+    @SuppressWarnings("unchecked")
+    public static Map<String, Object> buildDestroyParams(CloudinaryProperties props) {
         return ObjectUtils.asMap(
                 "resource_type", props.getResourceType(),
                 "invalidate", true

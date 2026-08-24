@@ -6,21 +6,25 @@ import com.duong.auction.system.enums.AuctionStatus;
 import com.duong.auction.system.enums.AuctionType;
 import com.duong.auction.system.exception.ApplicationException;
 import com.duong.auction.system.exception.ErrorCode;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.LocalDateTime;
+import java.time.ZonedDateTime;
 
 /**
  * Validator chuyên trách kiểm tra các thuộc tính cấu hình của Phiên Đấu Giá (Auction)
  * khi Tạo Mới, Chỉnh Sửa hoặc Đăng Lại (Relist).
  */
 @Component
+@RequiredArgsConstructor
 public class AuctionValidator {
 
     private static final long MIN_AUCTION_DURATION_MINUTES = 30; // Thời lượng phiên tối thiểu = 30 phút
-
+    private final Clock clock;
     // Validate cấu hình khi Tạo Mới sản phẩm (truyền ProductRequestDTO)
     public void validate(ProductRequestDTO dto) {
         validateAuctionFields(
@@ -97,7 +101,7 @@ public class AuctionValidator {
         }
 
         // 6. Kiểm tra thời gian bắt đầu không được ở trong quá khứ
-        if (startTime.isBefore(LocalDateTime.now())) {
+        if (startTime.isBefore(LocalDateTime.now(clock))) {
             throw new ApplicationException(ErrorCode.START_TIME_IN_PAST);
         }
 
@@ -107,7 +111,10 @@ public class AuctionValidator {
         }
 
         // 8. Kiểm tra thời lượng phiên kéo dài tối thiểu 30 phút
-        Duration duration = Duration.between(startTime, endTime);
+        ZonedDateTime startZoned = startTime.atZone(clock.getZone());
+        ZonedDateTime endZoned = endTime.atZone(clock.getZone());
+
+        Duration duration = Duration.between(startZoned, endZoned);
         if (duration.toMinutes() < MIN_AUCTION_DURATION_MINUTES) {
             throw new ApplicationException(ErrorCode.AUCTION_DURATION_TOO_SHORT);
         }

@@ -1,5 +1,6 @@
 package com.duong.auction.system.entity;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import jakarta.persistence.*;
 import lombok.Getter;
 import lombok.Setter;
@@ -28,5 +29,5 @@ public class ProductImage {
     private int displayOrder = 0;
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

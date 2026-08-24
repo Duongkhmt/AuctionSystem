@@ -19,6 +19,7 @@ import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
@@ -39,12 +40,13 @@ public class AuctionScheduler {
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
     private final OrderMapper orderMapper;
+    private final Clock clock;
 
     // Robot điều phối chạy ngầm định kỳ mỗi 10 giây (fixedRate = 10000ms)
     @Scheduled(fixedRate = 10000)
     @Transactional
     public void processAuctionStatusTransitions() {
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 1. Tự động kích hoạt các phiên hẹn giờ (SCHEDULED -> RUNNING)
         auctionRepository.autoStartAuctions(
@@ -71,50 +73,6 @@ public class AuctionScheduler {
         // 5. Tự động quét hủy các đơn UNPAID quá 48h & Phạt Gậy Vi Phạm / Khóa 90 ngày nếu bùng 3 lần
         processExpiredUnpaidOrders(now);
     }
-
-    // =========================================================================
-    // PRIVATE HELPER METHODS (Đóng gói nội bộ - Không ảnh hưởng bên ngoài)
-    // =========================================================================
-
-    // Xử lý chốt Winner và sinh Đơn hàng cho các phiên đến giờ kết thúc
-//    private void processEndedAuctions(LocalDateTime now) {
-//        List<Auction> endedAuctions = auctionRepository
-//                .findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(
-//                        AuctionStatus.RUNNING,
-//                        AuctionType.BUY_NOW,
-//                        now
-//                );
-//        //lấy danh sách xong lại duyệt
-//        for (Auction auction : endedAuctions) {
-//            Optional<Bid> highestBidOpt = bidRepository
-//                    .findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auction.getId());
-//
-//            User winner = null;
-//            //Nếu k có ai đặt giá thì bỏ qua
-//            if (highestBidOpt.isPresent()) {
-//                Bid highestBid = highestBidOpt.get();
-//
-//                if (auction.getAuctionType() == AuctionType.ENGLISH) {
-//                    winner = highestBid.getBidder();
-//                }
-//                else if (auction.getAuctionType() == AuctionType.RESERVE) {
-//                    if (highestBid.getBidAmount().compareTo(auction.getReservePrice()) >= 0) {
-//                        winner = highestBid.getBidder();
-//                    }
-//                }
-//
-//                if (winner != null && !orderRepository.existsByAuction_Id(auction.getId())) {
-//                    Order order = orderMapper.toEntity(auction, winner, highestBid.getBidAmount());
-//                    order.setPaymentDeadline(now.plusHours(48)); // 👈 Gán hạn chót 48h
-//                    orderRepository.save(order);
-//                }
-//            }
-//
-//            auction.setWinner(winner);
-//            auction.setStatus(AuctionStatus.ENDED);
-//        }
-//    }
-
     // Xử lý chốt Winner và sinh Đơn hàng cho các phiên đến giờ kết thúc (Gọn đẹp & 0 lỗi N+1)
     private void processEndedAuctions(LocalDateTime now) {
         List<Auction> endedAuctions = auctionRepository

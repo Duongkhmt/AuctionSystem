@@ -1,5 +1,6 @@
 package com.duong.auction.system.entity;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import com.duong.auction.system.enums.OrderStatus;
 import jakarta.persistence.*;
 import lombok.Getter;
@@ -69,8 +70,8 @@ public class Order {
     private OrderStatus status; // 👈 Set tường minh ở Service/Mapper, không gán mặc định ở đây!
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 
     @Column(name = "updated_at", nullable = false)
-    private LocalDateTime updatedAt = LocalDateTime.now();
+    private LocalDateTime updatedAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

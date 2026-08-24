@@ -14,6 +14,7 @@ import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
 import java.math.BigDecimal;
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.Optional;
 
@@ -26,6 +27,7 @@ public class BidValidator {
 
     private final BidStepCalculatorHelper bidStepCalculatorHelper;
     private final UserRepository userRepository;
+    private final Clock clock;
 
     // Validate quy tắc khi người mua thực hiện đặt giá cạnh tranh (ENGLISH / RESERVE)
     public void validateBid(User bidder, Auction auction, Optional<Bid> highestBidOpt, BidRequestDTO requestDTO) {
@@ -33,7 +35,7 @@ public class BidValidator {
         // 👈 Gọi hàm kiểm tra cấm đấu giá ở ngay bước đầu tiên!
         validateBidderNotBanned(bidder);
 
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
 
         // 1. Kiểm tra trạng thái phiên đấu giá bắt buộc phải là RUNNING và nằm trong khoảng thời gian [startTime, endTime]
         if (auction.getStatus() != AuctionStatus.RUNNING) {
@@ -90,7 +92,7 @@ public class BidValidator {
         }
 
         // 4. Lớp phòng vệ 2 nấc: Đảm bảo thời gian hiển thị chưa quá hạn 30 ngày (Defense-in-depth song song với Robot Scheduler)
-        if (LocalDateTime.now().isAfter(auction.getEndTime())) {
+        if (LocalDateTime.now(clock).isAfter(auction.getEndTime())) {
             throw new ApplicationException(ErrorCode.AUCTION_ENDED);
         }
 
@@ -103,7 +105,7 @@ public class BidValidator {
     // 💡 Helper method riêng: Tự động giải án sau 90 ngày hoặc ném lỗi bị cấm
     private void validateBidderNotBanned(User bidder) {
         if (bidder.getBannedUntil() != null) {
-            if (bidder.getBannedUntil().isBefore(LocalDateTime.now())) {
+            if (bidder.getBannedUntil().isBefore(LocalDateTime.now(clock))) {
                 // Đã quá 90 ngày -> Tự động giải phạt & reset gậy về 0!
                 bidder.setBannedUntil(null);
                 bidder.setUnpaidStrikeCount(0);

@@ -1,5 +1,6 @@
 package com.duong.auction.system.entity;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import com.duong.auction.system.enums.UserRole;
 import com.duong.auction.system.enums.UserStatus;
 import jakarta.persistence.*;
@@ -40,5 +41,5 @@ public class User {
     private UserStatus status; // 👈 Set tường minh ở Service/Mapper, không gán mặc định ở đây!
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

@@ -36,24 +36,21 @@ import com.duong.auction.system.dto.response.BidHistoryResponseDTO;
 import com.duong.auction.system.entity.Bid;
 import com.duong.auction.system.entity.User;
 import com.duong.auction.system.repository.UserRepository;
-import org.mapstruct.AfterMapping;
-import org.mapstruct.BeforeMapping;
-import org.mapstruct.Mapper;
-import org.mapstruct.Mapping;
-import org.mapstruct.Named;
-import org.springframework.beans.factory.annotation.Autowired;
+import lombok.RequiredArgsConstructor;
+import org.mapstruct.*;
 
 import java.util.*;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 
 
-@Mapper(componentModel = "spring")
+@Mapper(componentModel = "spring", injectionStrategy = InjectionStrategy.CONSTRUCTOR)
+@RequiredArgsConstructor
 public abstract class BidMapper {
 
     // 🟢 1. TIÊM TRỰC TIẾP UserRepository VÀO TRONG MAPPER
-    @Autowired
-    protected UserRepository userRepository;
+
+    protected final UserRepository userRepository;
 
     // Cache tạm thời theo luồng (ThreadLocal) để lưu danh sách User nạp sẵn
     private final ThreadLocal<Map<Long, User>> userCache = new ThreadLocal<>();

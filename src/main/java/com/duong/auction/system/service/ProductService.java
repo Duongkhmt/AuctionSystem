@@ -6,7 +6,6 @@ import com.duong.auction.system.dto.request.ProductUpdateRequestDTO;
 import com.duong.auction.system.dto.response.ProductResponseDTO;
 import com.duong.auction.system.entity.*;
 import com.duong.auction.system.repository.*;
-import com.duong.auction.system.entity.*;
 import com.duong.auction.system.enums.AuctionStatus;
 import com.duong.auction.system.enums.ProductStatus;
 import com.duong.auction.system.exception.ApplicationException;
@@ -14,7 +13,6 @@ import com.duong.auction.system.exception.ErrorCode;
 import com.duong.auction.system.mapper.AuctionMapper;
 import com.duong.auction.system.mapper.ProductImageMapper;
 import com.duong.auction.system.mapper.ProductMapper;
-import com.duong.auction.system.repository.*;
 import com.duong.auction.system.service.helper.ProductAuctionLookupHelper;
 import com.duong.auction.system.service.helper.ProductResponseHelper;
 import com.duong.auction.system.validator.AuctionValidator;
@@ -28,6 +26,7 @@ import org.springframework.transaction.support.TransactionSynchronization;
 import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.web.multipart.MultipartFile;
 
+import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Objects;
@@ -50,6 +49,7 @@ public class ProductService {
     private final AuctionMapper auctionMapper;
     private final ProductImageMapper productImageMapper;
     private final ProductAuctionLookupHelper productAuctionLookupHelper;
+    private final Clock clock;
 
     // =========================================================================
     // 1. NGƯỜI BÁN (SELLER) TẠO SẢN PHẨM MỚI KÈM CẤU HÌNH ĐẤU GIÁ
@@ -355,7 +355,7 @@ public class ProductService {
         auctionValidator.validateRelist(sellerId, auction);
 
         // 3. Khôi phục trạng thái RUNNING công khai và reset 30 ngày hiển thị mới (startTime = NOW(), endTime = NOW() + 30 days)
-        LocalDateTime now = LocalDateTime.now();
+        LocalDateTime now = LocalDateTime.now(clock);
         auction.setStatus(AuctionStatus.RUNNING);
         auction.setStartTime(now);
         auction.setEndTime(now.plusDays(30));
@@ -383,8 +383,7 @@ public class ProductService {
         var holder = productAuctionLookupHelper.findPendingProductAndAuction(productId);
         Product product = holder.product();
         Auction auction = holder.auction();
-        LocalDateTime now = LocalDateTime.now();
-
+        LocalDateTime now = LocalDateTime.now(clock);
         // 2. Kiểm tra nếu thời gian kết thúc đã trôi qua trước khi Admin kịp duyệt -> Báo lỗi
         if (auction.getEndTime().isBefore(now)) {
             throw new ApplicationException(ErrorCode.AUCTION_EXPIRED_BEFORE_APPROVAL);

@@ -1,5 +1,6 @@
 package com.duong.auction.system.entity;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import com.duong.auction.system.enums.PaymentMethod;
 import com.duong.auction.system.enums.PaymentStatus;
 import jakarta.persistence.*;
@@ -40,5 +41,5 @@ public class Payment {
     private PaymentStatus status; // 👈 Set tường minh ở Service (ví dụ: "SUCCESS"), không gán mặc định ở đây!
 
     @Column(name = "created_at", nullable = false, updatable = false)
-    private LocalDateTime createdAt = LocalDateTime.now();
+    private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

@@ -1,12 +1,12 @@
 package com.duong.auction.system.service;
 
 import com.cloudinary.Cloudinary;
-import com.cloudinary.utils.ObjectUtils;
 import com.duong.auction.system.config.CloudinaryProperties;
 import com.duong.auction.system.exception.ApplicationException;
 import com.duong.auction.system.exception.ErrorCode;
 import com.duong.auction.system.service.helper.CloudinarySdkHelper;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.web.multipart.MultipartFile;
 
@@ -20,6 +20,7 @@ import java.util.concurrent.CompletableFuture;
  * Service quản lý tích hợp việc upload và dọn dẹp hình ảnh sản phẩm trên Cloudinary.
  * Tích hợp cơ chế Upload Song Song (Parallel Async Upload) tăng tốc độ tải ảnh gấp 7-10 lần.
  */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class CloudinaryService {
@@ -91,7 +92,8 @@ public class CloudinaryService {
                     publicId,
                     CloudinarySdkHelper.buildDestroyParams(cloudinaryProperties)
             );
-        } catch (IOException | RuntimeException ignored) {
+        } catch (IOException | RuntimeException e) {
+            log.warn("Không thể xóa ảnh trên Cloudinary với publicId {}: {}", publicId, e.getMessage());
         }
     }
 
