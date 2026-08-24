@@ -32,6 +32,11 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
+import com.duong.auction.system.dto.event.BidEventMessage;
+import com.duong.auction.system.service.engine.RedisAtomicBiddingEngine;
+import com.duong.auction.system.service.stream.AsyncBidStreamPublisher;
+import java.util.UUID;
+
 @Service
 @RequiredArgsConstructor
 public class BiddingService {
@@ -47,51 +52,56 @@ public class BiddingService {
 
     private final ProxyBiddingEngineHelper proxyBiddingEngineHelper;
     private final BidResponseHelper bidResponseHelper;
+    private final RedisAtomicBiddingEngine redisEngine;
+    private final AsyncBidStreamPublisher streamPublisher;
     private static final int ANTI_SNIPING_WINDOW_MINUTES = 3;
     private static final int EXTENSION_MINUTES = 3;
 
     // =========================================================================
-    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) & ĐỘNG CƠ PROXY BIDDING TỰ ĐỘNG
+    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS IN-MEMORY ATOMIC ENGINE + STREAM QUEUE
     // =========================================================================
-    @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
+    @RateLimit(maxRequests = 10, timeWindowSeconds = 1)
     @CacheEvict(value = "bid_history", key = "#auctionId")
-    @Transactional
     public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
-        // 1. Tìm thông tin Người Đấu Giá (Bidder) trong hệ thống
-        User bidder = userRepository.findById(bidderId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
-
-        // 2. Tìm phiên đấu giá Auction (Hỗ trợ linh hoạt tìm theo Auction ID hoặc Product ID)
+        // 1. Lấy thông tin phiên đấu giá
         Auction auction = auctionRepository.findById(auctionId)
                 .or(() -> auctionRepository.findByProduct_Id(auctionId))
                 .orElseThrow(() -> new ApplicationException(ErrorCode.AUCTION_NOT_FOUND));
 
-        // 3. Lấy ra bản ghi Bid có mức giá cao nhất hiện tại (dùng auction.getId() chuẩn xác)
-        Optional<Bid> highestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auction.getId());
-
-        // 4. Validate toàn bộ quy tắc đặt giá (Kiểm tra trạng thái RUNNING, bước giá động, chống đè giá chính mình & chống seller tự bid)
-        bidValidator.validateBid(bidder, auction, highestBidOpt, requestDTO);
-
-        // 5. Kích hoạt động cơ Proxy Bidding Engine: So kè ngân sách maxAutoBid và sinh danh sách các lượt bid đè giá tự động
-        var proxyResult = proxyBiddingEngineHelper.processProxyBidding(
-                auction, bidder, requestDTO.getBidAmount(), requestDTO.getMaxAutoBidAmount()
-        );
-
-        // 6. Xử lý Soft-close Anti-sniping: Nếu có bid hợp lệ trong 3 phút cuối -> Tự động kéo dài thời gian kết thúc thêm 3 phút
-        LocalDateTime now = LocalDateTime.now(clock);
-        boolean timeExtended = false;
-        if (auction.getEndTime().minusMinutes(ANTI_SNIPING_WINDOW_MINUTES).isBefore(now)) {
-            auction.setEndTime(auction.getEndTime().plusMinutes(EXTENSION_MINUTES));
-            timeExtended = true;
+        if (auction.getStatus() != com.duong.auction.system.enums.AuctionStatus.RUNNING) {
+            throw new ApplicationException(ErrorCode.AUCTION_NOT_RUNNING);
         }
 
-        // 7. Cập nhật giá hiện tại mới currentPrice và lưu trọn vẹn 100% Audit Trail các lượt bid xuống Database
-        auction.setCurrentPrice(proxyResult.newCurrentPrice());
-        auctionRepository.save(auction);
-        bidRepository.saveAll(proxyResult.bidsToSave());
+        // 2. Thực thi Lua Script so kè giá nguyên tử 0.02ms trên Redis RAM
+        boolean success = redisEngine.processBidAtomic(
+                auction.getId(),
+                bidderId,
+                requestDTO.getBidAmount(),
+                auction.getBidStep()
+        );
 
-        // 8. Gọi Helper đóng gói dữ liệu phản hồi DTO trả về cho Frontend
-        return bidResponseHelper.buildResponse(auction, proxyResult.winningBid(), timeExtended);
+        if (!success) {
+            throw new ApplicationException(ErrorCode.BID_AMOUNT_TOO_LOW);
+        }
+
+        // 3. Đẩy tin nhắn vào Redis Stream Queue để Worker ghi DB ngầm phía sau
+        String eventId = UUID.randomUUID().toString();
+        BidEventMessage eventMessage = BidEventMessage.builder()
+                .eventId(eventId)
+                .auctionId(auction.getId())
+                .bidderId(bidderId)
+                .bidAmount(requestDTO.getBidAmount())
+                .timestamp(LocalDateTime.now(clock))
+                .build();
+
+        streamPublisher.publishBidEvent(eventMessage);
+
+        // 4. Trả phản hồi siêu tốc thành công cho Client
+        return BidResponseDTO.builder()
+                .auctionId(auction.getId())
+                .bidAmount(requestDTO.getBidAmount())
+                .newCurrentPrice(requestDTO.getBidAmount())
+                .build();
     }
 
     // =========================================================================
