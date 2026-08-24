@@ -20,6 +20,7 @@ import com.duong.auction.system.service.helper.ProductResponseHelper;
 import com.duong.auction.system.validator.AuctionValidator;
 import com.duong.auction.system.validator.ProductImageValidator;
 import lombok.RequiredArgsConstructor;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -142,7 +143,7 @@ public class ProductService {
     // =========================================================================
     // 3. CHỈNH SỬA SẢN PHẨM (KHI CHƯA LÊN SÀN HOẶC CHƯA BẮT ĐẦU)
     // =========================================================================
-
+    @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
     public ProductResponseDTO updateProduct(Long sellerId, Long productId, ProductUpdateRequestDTO requestDTO) {
         // 1. Kiểm tra sản phẩm tồn tại và chính chủ Người Bán
@@ -325,6 +326,7 @@ public class ProductService {
     }
 
     // Người bán CHỦ ĐỘNG HỦY bài đăng (Chỉ khi chưa có ai đặt giá)
+    @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
     public ProductResponseDTO cancelAuction(Long sellerId, Long productId) {
         // 1. Kiểm tra chính chủ và trạng thái hợp lệ
@@ -374,6 +376,7 @@ public class ProductService {
     }
 
     // Admin Chấp Thuận xuất bản bài đăng (ProductStatus = APPROVED)
+    @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
     public ProductResponseDTO approveProduct(Long productId) {
         // 1. Lấy bộ đôi Product và Auction đang ở trạng thái PENDING
@@ -403,6 +406,7 @@ public class ProductService {
     }
 
     // Admin Từ Chối xuất bản bài đăng (ProductStatus = REJECTED)
+    @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
     public ProductResponseDTO rejectProduct(Long productId, ProductRejectRequestDTO rejectDTO) {
         // 1. Lấy bộ đôi Product và Auction đang PENDING

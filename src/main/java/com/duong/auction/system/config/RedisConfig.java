@@ -1,6 +1,9 @@
 package com.duong.auction.system.config;
 
 // Các thư viện Spring Boot cung cấp
+import org.redisson.Redisson;
+import org.redisson.api.RedissonClient;
+import org.redisson.config.Config;
 import org.springframework.cache.annotation.EnableCaching;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -41,8 +44,11 @@ public class RedisConfig {
         Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
 
         // [7] Riêng vùng "bid_history" (Lịch sử đặt giá): Ép thời gian sống ngắn lại (chỉ 30 giây)
-        // Vì lịch sử đấu giá thay đổi rất nhanh, không nên để quá lâu 5 phút!
         cacheConfigs.put("bid_history", defaultConfig.entryTtl(Duration.ofSeconds(30)));
+
+        // [8] Riêng vùng "categories" (Danh mục sản phẩm): Ép thời gian sống dài (24 giờ)
+        // Vì danh mục sản phẩm rất ít khi thay đổi
+        cacheConfigs.put("categories", defaultConfig.entryTtl(Duration.ofHours(24)));
 
         // -----------------------------------------------------------------------------------
         // KHỐI 3: ĐÓNG GÓI VÀ BÀN GIAO CHO SPRING BOOT
@@ -51,5 +57,13 @@ public class RedisConfig {
                 .cacheDefaults(defaultConfig) // Áp dụng cấu hình mặc định
                 .withInitialCacheConfigurations(cacheConfigs) // Áp dụng các cấu hình riêng (như 30s của bid_history)
                 .build(); // Hoàn tất khởi tạo Trưởng phòng Quản lý Cache!
+    }
+
+    //Bean RedissonClient kết nối Redis phục vụ Khóa Phân Tán (Distributed Lock)
+    @Bean
+    public RedissonClient redissonClient() {
+        Config config = new Config();
+        config.useSingleServer().setAddress("redis://localhost:6379");
+        return Redisson.create(config);
     }
 }

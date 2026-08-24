@@ -24,6 +24,8 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 - **Spring Security:** `org.springframework.boot:spring-boot-starter-security`
 - **Spring Data JPA:** `org.springframework.boot:spring-boot-starter-data-jpa`
 - **Validation:** `org.springframework.boot:spring-boot-starter-validation`
+- **Spring Data Redis:** `org.springframework.boot:spring-boot-starter-data-redis` — Bộ nhớ đệm phân tán Redis (Caching `categories`, `auctions`, TTL 30s `bid_history`) và Aspect giới hạn tốc độ Rate Limit bằng Redis Lua Script.
+- **Redisson:** 3.35.0 (`org.redisson:redisson-spring-boot-starter`) — Hỗ trợ Distributed Lock cho hạ tầng đa nút.
 - **Database:** PostgreSQL (`org.postgresql:postgresql`, phiên bản driver theo Spring Boot BOM)
 - **MapStruct:** 1.6.2 (`org.mapstruct:mapstruct` và `org.mapstruct:mapstruct-processor`)
 - **Lombok:** 1.18.34 (`org.projectlombok:lombok`)
@@ -40,11 +42,14 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 - **JDK:** 21 trở lên
 - **Build Tool:** Apache Maven 3.8+ (hoặc sử dụng script `mvnw` đi kèm dự án)
 - **Database:** PostgreSQL 15+ (bắt buộc hỗ trợ kiểu dữ liệu `JSONB`)
+- **In-Memory Cache:** Redis 6+ (phục vụ Caching & Rate Limiting Lua Script)
 - **Docker & Docker Compose:** Tuỳ chọn (phục vụ đóng gói container và triển khai)
 - **Biến môi trường (Environment Variables):**
   - `spring.datasource.url` (Mặc định: `jdbc:postgresql://localhost:5432/auction_system`)
   - `spring.datasource.username` (Mặc định: `postgres`)
   - `spring.datasource.password`
+  - `spring.data.redis.host` (Mặc định: `localhost`)
+  - `spring.data.redis.port` (Mặc định: `6379`)
   - `CLOUDINARY_CLOUD_NAME`
   - `CLOUDINARY_API_KEY`
   - `CLOUDINARY_API_SECRET`
@@ -140,8 +145,9 @@ docker run -d -p 8080:8080 \
 Mã nguồn dự án được tổ chức theo cấu trúc sau:
 
 ```
-src/main/java/DuAnTrainning/AuctionSystem
-├── config          # Cấu hình Spring Security và Cloudinary API Bean
+src/main/java/com/duong/auction/system
+├── aspect          # RateLimitAspect (@RateLimit chống spam API nguyên tử bằng Redis Lua Script)
+├── config          # Cấu hình Spring Security, Cloudinary API, Redis CacheManager & i18n WebConfig
 ├── controller      # REST API Endpoints (Admin, Seller, Bidder, Public, AuctionBidding, Category)
 ├── dto
 │   ├── request     # DTO đầu vào (ProductRequestDTO, CheckoutRequestDTO, ShipOrderRequestDTO...)

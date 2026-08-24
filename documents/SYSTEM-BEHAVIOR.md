@@ -13,7 +13,8 @@
 | 7     | Đồng bộ giao dịch tài nguyên mây (CDN Sync) | Quy tắc giao dịch       | Tự động dọn ảnh rác trên mây khi hỏng giao dịch DB                           |
 | 8     | Xử lý bùng tiền & Gậy vi phạm (3-Strikes)   | Quy tắc chế tài tự động | Tự động hủy đơn UNPAID quá 48h, phạt gậy và cấm đấu giá 90 ngày khi đủ 3 gậy |
 | 9     | Cơ chế Xử lý Đa Ngôn Ngữ (i18n Localization)| Bộ giải mã Spring MVC   | Tự động dịch câu thông báo lỗi theo Header Accept-Language của Client       |
-
+| 10    | Chống Spam & Rate Limit bằng Redis Lua Script | Spring AOP + Redis RAM  | Chặn đứng các request quá tải ở vòng bảo vệ ngoại cùng `@Order(HIGHEST_PRECEDENCE)` |
+| 11    | Bộ nhớ đệm phân tán Redis (Distributed Cache)| Spring Cache + Redis    | Giảm tải truy vấn DB với `@Cacheable` và tự động làm tươi cache bằng `@CacheEvict`   |
 
 ---
 
@@ -400,4 +401,64 @@ Tự động kích hoạt tại tầng `GlobalExceptionHandler` cho mọi API Re
 **Liên quan tới**  
 - `ErrorCode.java`, `GlobalExceptionHandler.java`, `WebConfig.java`, `messages_vi.properties`, `messages_en.properties`, `language.service.ts`, `api-header.interceptor.ts`.
 
+---
+
+### Cơ chế Chống Spam & Giới hạn Tốc độ bằng Redis (Redis Rate Limit Aspect)
+
+**Bài toán kinh doanh**  
+Trong các phiên đấu giá hot, việc người dùng hoặc Bot tự động bấm nút "Đặt giá" liên tục nhiều lần trong 1 giây (Spam Request / DDoS) có thể làm nghẽn CSDL, gây nghẽn giao dịch cho các người dùng khác và làm hư hại tài nguyên hệ thống.
+
+**Mục tiêu**  
+Chặn đứng các Request vượt ngưỡng ngay từ **vòng bảo vệ ngoại cùng** trước khi Request kịp đi vào `@Transactional` hay thao tác CSDL.
+
+**Đối tượng sử dụng / Điều kiện kích hoạt**  
+Tự động kích hoạt thông qua Annotation `@RateLimit(maxRequests = 5, timeWindowSeconds = 10)` tại các phương thức nhạy cảm như `placeBid` của `BiddingService`.
+
+**Luồng thực hiện**  
+1. **Aspect AOP Chạy Đầu Tiên**: `@RateLimitAspect` được đánh nhãn `@Order(Ordered.HIGHEST_PRECEDENCE)` để đảm bảo chạy TRƯỚC tất cả các Aspect khác (Transaction, Evict Cache).
+2. **Khởi tạo Key Redis**: Tạo Redis Key có định dạng `rate_limit:{methodName}:user:{bidderId}`.
+3. **Chạy Redis Lua Script Nguyên Tử**: Thực thi đoạn mã Lua trên bộ nhớ RAM Redis:
+   ```lua
+   local current = redis.call('INCR', KEYS[1])
+   if tonumber(current) == 1 then
+      redis.call('EXPIRE', KEYS[1], ARGV[1])
+   end
+   return current
+   ```
+4. **Kiểm tra Ngưỡng**: NẾU `currentCount > maxRequests` ➔ Lập tức ném `ApplicationException(ErrorCode.TOO_MANY_REQUESTS)` (HTTP Status 429), ngắt hoàn toàn luồng xử lý phía sau.
+
+**Quy tắc nghiệp vụ**  
+- [Bắt buộc dùng Lua Script nguyên tử] — tránh tình trạng Race Condition khi nhiều request cùng ghi đè bộ đếm.
+- [Ép thứ tự ưu tiên HIGHEST_PRECEDENCE] — chặn từ bên ngoài, không mở DB Transaction dư thừa.
+
+**Liên quan tới**  
+- `RateLimit.java`, `RateLimitAspect.java`, `RedisConfig.java`, `BiddingService.java`.
+
+---
+
+### Cơ chế Bộ nhớ đệm Phân tán Redis (Distributed Caching & Eviction)
+
+**Bài toán kinh doanh**  
+Hàng ngàn người cùng truy cập xem danh mục hoặc chi tiết một phiên đấu giá hot gây áp lực cực lớn lên PostgreSQL CSDL. Nếu mỗi lượt F5 đều gọi SQL Query, DB sẽ bị quá tải (I/O Bottleneck).
+
+**Mục tiêu**  
+Lưu trữ kết quả truy vấn vào bộ nhớ đệm RAM Redis với cơ chế làm tươi (Eviction) linh hoạt.
+
+**Cấu hình & Luồng thực hiện**  
+1. **Cấu hình TTL Phân tầng (`RedisConfig.java`)**:
+   - Mặc định (`defaultConfig`): TTL 5 phút, Serialization `RedisSerializer.json()`.
+   - Vùng `bid_history`: TTL riêng **30 giây** (vì lịch sử thầu thay đổi nhanh).
+2. **Đọc Cache (`@Cacheable`)**:
+   - `@Cacheable(value = "categories", key = "'all'")` tại `CategoryService.getAllCategories()` ➔ Đọc danh mục từ Redis.
+   - `@Cacheable(value = "auctions", key = "#productId")` tại `ProductService.getProductWithAuctionById()` ➔ Đọc chi tiết bài thầu từ Redis.
+3. **Xóa Cache Làm Tươi (`@CacheEvict`)**:
+   - `@CacheEvict(value = "bid_history", key = "#auctionId")` tại `BiddingService.placeBid()` ➔ Xóa cache lịch sử thầu ngay khi có bid mới.
+   - `@CacheEvict(value = "auctions", key = "#productId")` tại `ProductService.updateProduct()` ➔ Xóa cache chi tiết khi Seller cập nhật bài.
+
+**Quy tắc nghiệp vụ**  
+- [TTL Lịch sử thầu chỉ để 30s] — đảm bảo dữ liệu hiển thị realtime mà không bị cũ quá lâu.
+- [Xóa cache tức thì khi có biến động dữ liệu (`@CacheEvict`)] — đảm bảo tính nhất quán giữa Redis và DB.
+
+**Liên quan tới**  
+- `RedisConfig.java`, `CategoryService.java`, `ProductService.java`, `BiddingService.java`.
 

@@ -1,5 +1,6 @@
 package com.duong.auction.system.service;
 
+import com.duong.auction.system.aspect.RateLimit;
 import com.duong.auction.system.dto.request.BidRequestDTO;
 import com.duong.auction.system.dto.response.BidHistoryResponseDTO;
 import com.duong.auction.system.dto.response.BidResponseDTO;
@@ -50,6 +51,7 @@ public class BiddingService {
     // =========================================================================
     // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) & ĐỘNG CƠ PROXY BIDDING TỰ ĐỘNG
     // =========================================================================
+    @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
     @CacheEvict(value = "bid_history", key = "#auctionId")
     @Transactional
     public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
@@ -109,7 +111,8 @@ public class BiddingService {
     // =========================================================================
     // 3. NGHIỆP VỤ MUA NGAY GIÁ CỐ ĐỊNH (BUY-NOW - FIRST COME, FIRST SERVED)
     // =========================================================================
-
+    // Khi mua ngay thành công -> Tự động xé bỏ cả cache lịch sử bid lẫn cache chi tiết sản phẩm!
+    @CacheEvict(value = {"bid_history", "auctions"}, key = "#auctionId")
     @Transactional
     public BidResponseDTO executeBuyNow(Long bidderId, Long auctionId) {
         // 1. Tìm thông tin Người Mua trong hệ thống

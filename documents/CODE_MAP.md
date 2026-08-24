@@ -1,60 +1,69 @@
 # CODE MAP — DỰ ÁN DỰ ÁN AUCTION SYSTEM (BACKEND)
 ## 1. System Overview
 
-- **Framework / Platform:** `✅ Confirmed` Java 21, Spring Boot 4.1.0 (`spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `spring-boot-starter-security`, `spring-boot-starter-validation`).
+- **Framework / Platform:** `✅ Confirmed` Java 21, Spring Boot 4.1.0 (`spring-boot-starter-web`, `spring-boot-starter-data-jpa`, `spring-boot-starter-security`, `spring-boot-starter-validation`, `spring-boot-starter-data-redis`, `redisson-spring-boot-starter`).
 - **Loại hình kiến trúc:** `✅ Confirmed` Backend RESTful API, Layered Architecture (Controller → Service → Repository → Database).
-- **Entry Point:** `✅ Confirmed` [DuAnTrainningApplication.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/DuAnTrainning/AuctionSystem/DuAnTrainningApplication.java) (có kích hoạt `@EnableScheduling`).
-- **Database:** `✅ Confirmed` PostgreSQL (qua `spring-boot-starter-data-jpa`, PostgreSQL Driver, Hibernate Dialect PostgreSQL, cột JSONB mapped bằng `@JdbcTypeCode(SqlTypes.JSON)`).
+- **Entry Point:** `✅ Confirmed` [AuctionSystemApplication.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/AuctionSystemApplication.java) (có kích hoạt `@EnableScheduling`).
+- **Database & Cache:** `✅ Confirmed` PostgreSQL (qua `spring-boot-starter-data-jpa`, Hibernate Dialect PostgreSQL, cột JSONB mapped bằng `@JdbcTypeCode(SqlTypes.JSON)`) + Redis In-Memory Cache (Caching `categories`, `auctions`, TTL 30s cho `bid_history`).
+- **Chống Spam & Giới hạn Tốc độ (Rate Limiting):** `✅ Confirmed` [RateLimitAspect.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/aspect/RateLimitAspect.java) sử dụng Redis Lua Script chạy nguyên tử với `@Order(Ordered.HIGHEST_PRECEDENCE)` bảo vệ API đặt giá.
 - **Dịch vụ bên ngoài (External Service):** `✅ Confirmed` Cloudinary API (qua SDK `cloudinary-http5` 2.0.0 để lưu trữ và quản lý ảnh sản phẩm song song).
-- **Thư viện bổ trợ (Tools/Mappers):** `✅ Confirmed` MapStruct 1.6.2 (sinh code ánh xạ DTO ↔ Entity), Lombok 1.18.34, `dotenv-java` 3.0.0.
-- **Bảo mật (Security):** `✅ Confirmed` Spring Security tích hợp ở mức cơ bản ([SecurityConfig.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/DuAnTrainning/AuctionSystem/config/SecurityConfig.java)): cho phép truy cập tất cả API (`permitAll()`), vô hiệu hóa CSRF, mở CORS cho mọi Origin. Chưa có JWT Filter / Session Authentication.
-- **Tự động hóa ngầm (Scheduler):** `✅ Confirmed` Robot [AuctionScheduler.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/DuAnTrainning/AuctionSystem/service/AuctionScheduler.java) chạy ngầm định kỳ 10 giây/lần tự động chuyển trạng thái phiên, sinh đơn hàng, xử lý hủy đơn bùng tiền quá 48h và phạt cấm đấu giá 90 ngày.
+- **Thư viện bổ trợ (Tools/Mappers):** `✅ Confirmed` MapStruct 1.6.2 (sinh code ánh xạ DTO ↔ Entity), Lombok 1.18.34, `dotenv-java` 3.0.0, Redisson 3.35.0 (Distributed Lock).
+- **Bảo mật & Đa ngôn ngữ (Security & i18n):** `✅ Confirmed` Spring Security tích hợp ở mức cơ bản ([SecurityConfig.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/SecurityConfig.java)): cho phép truy cập tất cả API (`permitAll()`), vô hiệu hóa CSRF, mở CORS. Hệ thống i18n đa ngôn ngữ cấu hình tại [WebConfig.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/WebConfig.java) với `AcceptHeaderLocaleResolver` (`vi` / `en`).
+- **Tự động hóa ngầm (Scheduler):** `✅ Confirmed` Robot [AuctionScheduler.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/AuctionScheduler.java) chạy ngầm định kỳ 10 giây/lần tự động chuyển trạng thái phiên, sinh đơn hàng, xử lý hủy đơn bùng tiền quá 48h và phạt cấm đấu giá 90 ngày.
 
 ### Sơ đồ kiến trúc tổng quan hệ thống:
 
 ```text
                Client (HTTP RESTful / JSON snake_case)
-                                 ↓
-                     SecurityConfig (Cors & permitAll)
-                                 ↓
-                            Controller 
-     (SellerProductController, BidderController, AuctionBiddingController,
-      AdminProductController, ProductController, CategoryController)
-                                 ↓
-                      Validation & DTO Mapping
-       (AuctionValidator, BidValidator, OrderValidator, ProductImageValidator)
-       (ProductMapper, AuctionMapper, OrderMapper, BidMapper, ProductImageMapper)
-                                 ↓
-                             Service
-     (ProductService, BiddingService, OrderService, CategoryService, CloudinaryService)
-      ├── Helpers: (ProductResponseHelper, ProxyBiddingEngineHelper, 
-      │             BidStepCalculatorHelper, OrderResponseHelper, 
-      │             ProductAuctionLookupHelper, BidResponseHelper)
-      └── Async Job: (AuctionScheduler @Scheduled 10s)
-                                 ↓
-                            Repository
-     (UserRepository, ProductRepository, AuctionRepository, BidRepository, 
-      OrderRepository, PaymentRepository, CategoryRepository, ProductImageRepository)
-                                 ↓
-                          Entity / Database
-       (PostgreSQL: users, categories, products, product_images, 
-                    auctions, bids, orders, payments)
-                                 ↑
-                      Cloudinary Service (Image CDN)
+                                  ↓
+                      SecurityConfig (Cors & permitAll)
+                      RateLimitAspect (@Order HIGHEST_PRECEDENCE & Redis Lua Script)
+                                  ↓
+                             Controller 
+      (SellerProductController, BidderController, AuctionBiddingController,
+       AdminProductController, ProductController, CategoryController)
+                                  ↓
+                       Validation & DTO Mapping
+        (AuctionValidator, BidValidator, OrderValidator, ProductImageValidator)
+        (ProductMapper, AuctionMapper, OrderMapper, BidMapper, ProductImageMapper)
+                                  ↓
+                              Service
+      (ProductService, BiddingService, OrderService, CategoryService, CloudinaryService)
+       ├── Redis Cache: (@Cacheable, @CacheEvict trên RedisCacheManager)
+       ├── Helpers: (ProductResponseHelper, ProxyBiddingEngineHelper, 
+       │             BidStepCalculatorHelper, OrderResponseHelper, 
+       │             ProductAuctionLookupHelper, BidResponseHelper)
+       └── Async Job: (AuctionScheduler @Scheduled 10s)
+                                  ↓
+                             Repository
+      (UserRepository, ProductRepository, AuctionRepository, BidRepository, 
+       OrderRepository, PaymentRepository, CategoryRepository, ProductImageRepository)
+                                  ↓
+                           Entity / Database / Cache
+        (PostgreSQL: users, categories, products, product_images, 
+                     auctions, bids, orders, payments)
+        (Redis Server: rate_limit keys, cache TTL 30s/5m)
+                                  ↑
+                       Cloudinary Service (Image CDN)
 ```
 
 ---
 
 ## 2. Project Structure
 
-Cấu trúc cây thư mục nguồn thực tế trong `src/main/java/DuAnTrainning/AuctionSystem/`:
+Cấu trúc cây thư mục nguồn thực tế trong `src/main/java/com/duong/auction/system/`:
 
 ```text
 com/duong/auction/system/
 ├── AuctionSystemApplication.java       # [Entry Point] Class khởi chạy ứng dụng & bật Scheduling
+├── aspect/
+│   ├── RateLimit.java                  # Annotation cấu hình maxRequests & timeWindowSeconds
+│   └── RateLimitAspect.java            # Aspect AOP chặn spam API bằng Redis Lua Script
 ├── config/
 │   ├── CloudinaryConfig.java           # Configuration Bean tạo instance Cloudinary SDK
-│   └── SecurityConfig.java             # Configuration Spring Security & CORS
+│   ├── RedisConfig.java                # Configuration Redis CacheManager & Serializer (TTL 30s/5m)
+│   ├── SecurityConfig.java             # Configuration Spring Security & CORS
+│   └── WebConfig.java                  # Configuration i18n AcceptHeaderLocaleResolver & MessageSource
 ├── controller/
 │   ├── AdminProductController.java     # Endpoint dành riêng cho Quản trị viên (Admin)
 │   ├── AuctionBiddingController.java   # Endpoint Đặt giá (Bid) & Mua Ngay (Buy Now)

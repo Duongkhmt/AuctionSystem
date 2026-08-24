@@ -2,6 +2,8 @@ package com.duong.auction.system.service;
 
 import com.cloudinary.Cloudinary;
 import com.cloudinary.Uploader;
+import com.duong.auction.system.exception.ApplicationException;
+import com.duong.auction.system.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -111,6 +113,28 @@ class CloudinaryServiceTest {
         assertThat(results).hasSize(2);
         assertThat(results.get(0).publicId()).isEqualTo("id1");
         assertThat(results.get(1).publicId()).isEqualTo("id2");
+    }
+
+    @Test
+    @DisplayName("Upload song song 10 ảnh nhưng ảnh thứ 10 bị lỗi - Tự động dọn dẹp (delete) các ảnh đã lỡ up thành công trước đó và ném lỗi")
+    void uploadAll_PartialFailure_ShouldCleanupSuccessfullyUploadedImagesAndThrowException() throws IOException {
+        // 1. GIVEN: Giả lập 2 file ảnh (file 1 thành công, file 2 bị lỗi đọc bytes)
+        MultipartFile file1 = mock(MultipartFile.class);
+        MultipartFile file2 = mock(MultipartFile.class);
+        given(file1.getBytes()).willReturn("bytes1".getBytes());
+        given(file2.getBytes()).willThrow(new IOException("Network error on 10th image"));
+
+        Map<String, Object> result1 = Map.of("secure_url", "http://url1", "public_id", "id1");
+        given(uploader.upload(eq("bytes1".getBytes()), anyMap())).willReturn(result1);
+
+        // 2. WHEN & THEN: Gọi uploadAll -> Bắt lỗi IMAGE_UPLOAD_FAILED và khẳng định đã tự động gọi destroy cho id1
+        assertThatThrownBy(() -> cloudinaryService.uploadAll(List.of(file1, file2)))
+                .isInstanceOf(ApplicationException.class)
+                .extracting("errorCode")
+                .isEqualTo(ErrorCode.IMAGE_UPLOAD_FAILED);
+
+        // Khẳng định ảnh 1 (đã up thành công) tự động được dọn dẹp bằng uploader.destroy
+        then(uploader).should(times(1)).destroy(eq("id1"), anyMap());
     }
 
     @Test

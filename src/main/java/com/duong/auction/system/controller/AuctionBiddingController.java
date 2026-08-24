@@ -3,6 +3,7 @@ package com.duong.auction.system.controller;
 import com.duong.auction.system.dto.request.BidRequestDTO;
 import com.duong.auction.system.dto.response.BidHistoryResponseDTO;
 import com.duong.auction.system.dto.response.BidResponseDTO;
+import com.duong.auction.system.service.BiddingConcurrencyFacade;
 import com.duong.auction.system.service.BiddingService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
@@ -20,11 +21,13 @@ import java.util.List;
 @RequiredArgsConstructor
 public class AuctionBiddingController {
 
+    private final BiddingConcurrencyFacade biddingConcurrencyFacade;
     private final BiddingService biddingService;
 
     // =========================================================================
     // 1. API ĐẶT GIÁ CẠNH TRANH (BID) - DÀNH CHO LOẠI HÌNH ENGLISH & RESERVE
     // POST /v1/auctions/{auctionId}/bids?bidderId=1
+    // (Bọc Redisson Lock + Rate Limit)
     // =========================================================================
     @PostMapping
     public ResponseEntity<BidResponseDTO> placeBid(
@@ -32,38 +35,36 @@ public class AuctionBiddingController {
             @PathVariable Long auctionId,
             @Valid @RequestBody BidRequestDTO requestDTO
     ) {
-        // 1. Gọi Service thực hiện kiểm tra quy tắc, chạy Proxy Bidding và gia hạn Anti-sniping (nếu có)
-        BidResponseDTO response = biddingService.placeBid(bidderId, auctionId, requestDTO);
-        // 2. Trả về kết quả đặt giá với HTTP Status Code 201 CREATED
+        // 🚀 Gọi qua Facade để bọc Khóa Phân Tán Redisson Lock!
+        BidResponseDTO response = biddingConcurrencyFacade.placeBidWithLock(bidderId, auctionId, requestDTO);
         return ResponseEntity.status(HttpStatus.CREATED).body(response);
     }
 
     // =========================================================================
     // 2. API MUA NGAY GIÁ CỐ ĐỊNH (BUY-NOW) - FIRST COME, FIRST SERVED
     // POST /v1/auctions/{auctionId}/bids/buy-now?bidderId=2
+    // (Bọc Redisson Lock)
     // =========================================================================
     @PostMapping("/buy-now")
     public ResponseEntity<BidResponseDTO> buyNow(
             @RequestParam Long bidderId,
             @PathVariable Long auctionId
     ) {
-        // 1. Gọi Service thực hiện chốt đơn Mua Ngay giá cố định buyNowPrice và gán Winner
-        BidResponseDTO response = biddingService.executeBuyNow(bidderId, auctionId);
-        // 2. Trả về kết quả chốt đơn thành công với HTTP Status Code 200 OK
+        // 🚀 Gọi qua Facade để bọc Khóa Phân Tán Redisson Lock!
+        BidResponseDTO response = biddingConcurrencyFacade.executeBuyNowWithLock(bidderId, auctionId);
         return ResponseEntity.ok(response);
     }
 
     // =========================================================================
     // 3. API XEM LỊCH SỬ ĐẶT GIÁ CÔNG KHAI (ẢN DANH TÊN BIDDER)
     // GET /v1/auctions/{auctionId}/bids
+    // (Đọc thẳng từ Cache Redis 30s)
     // =========================================================================
     @GetMapping
     public ResponseEntity<List<BidHistoryResponseDTO>> getBidHistory(
             @PathVariable Long auctionId
     ) {
-        // 1. Gọi Service lấy danh sách lịch sử bid kèm mã hóa tên (d***g)
         List<BidHistoryResponseDTO> history = biddingService.getAuctionBidHistory(auctionId);
-        // 2. Trả về danh sách lịch sử đấu giá với HTTP Status Code 200 OK
         return ResponseEntity.ok(history);
     }
 }

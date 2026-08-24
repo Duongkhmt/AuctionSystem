@@ -59,9 +59,10 @@ public enum ErrorCode {
     ORDER_ALREADY_PAID(1502, "Đơn hàng này đã được thanh toán trước đó", HttpStatus.BAD_REQUEST),
     CANNOT_SHIP_UNPAID_ORDER(1503, "Không thể giao hàng cho đơn chưa được người mua thanh toán", HttpStatus.BAD_REQUEST),
     ORDER_NOT_IN_SHIPPING_STATE(1504, "Đơn hàng chưa ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
-    INVALID_PHONE_NUMBER(1505, "Số điện thoại giao hàng không hợp lệ", HttpStatus.BAD_REQUEST);
 
-
+    // ===== RATE LIMIT & CONCURRENCY: 1601 - 1602 =====
+    TOO_MANY_REQUESTS(1601, "Hệ thống đang xử lý dữ liệu, vui lòng chờ 1 chút rồi bấm lại!", HttpStatus.TOO_MANY_REQUESTS),
+    CONCURRENT_BID_REJECTED(1406, "Hệ thống đang xử lý lượt đặt giá khác cho phiên này, vui lòng thử lại ngay!", HttpStatus.CONFLICT);
 
 
     ErrorCode(int code, String message, HttpStatusCode httpStatusCode) {
