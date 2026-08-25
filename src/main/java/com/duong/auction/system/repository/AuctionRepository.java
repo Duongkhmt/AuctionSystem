@@ -18,15 +18,6 @@ import java.util.Optional;
 public interface AuctionRepository extends JpaRepository<Auction, Long> {
     //Tìm phiên đấu giá của 1 sản phẩm
     Optional<Auction> findByProduct_Id(Long productId);
-
-//
-//     Truy vấn Batch lấy danh sách Auction theo danh sách productIds,
-//     đồng thời KHỚP VỚI BẢNG USERS (winner) ngay trong 1 câu SQL duy nhất bằng LEFT JOIN FETCH.
-//     Sử dụng LEFT JOIN để lấy cả những phiên chưa có Người thắng (winner = null).
-//    List<Auction> findByProduct_IdIn(Collection<Long> productIds);
-//    @Query("SELECT a FROM Auction a LEFT JOIN FETCH a.winner WHERE a.product.id IN :productIds")
-//    List<Auction> findByProductIdInWithWinner(@Param("productIds") Collection<Long> productIds);
-
     //Sử dụng entity graph
     @EntityGraph(attributePaths = {"winner"})
     List<Auction> findByProduct_IdIn(Collection<Long> productIds);

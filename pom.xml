@@ -57,6 +57,12 @@
 			<scope>runtime</scope>
 		</dependency>
 
+		<!-- Spring Kafka (Event-Driven Messaging) -->
+		<dependency>
+			<groupId>org.springframework.kafka</groupId>
+			<artifactId>spring-kafka</artifactId>
+		</dependency>
+
 		<!--		Spring Security-->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>

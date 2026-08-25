@@ -17,18 +17,17 @@ import java.util.Set;
 public interface OrderRepository extends JpaRepository<Order, Long> {
 
 //    // 1. Truy vấn danh sách tất cả các đơn hàng trúng thầu của 1 Người Mua (Buyer), sắp xếp đơn mới nhất xếp trên
-//    List<Order> findByBuyer_IdOrderByCreatedAtDesc(Long buyerId);
     @EntityGraph(attributePaths = {"product", "product.images"})
     List<Order> findByBuyer_IdOrderByCreatedAtDesc(Long buyerId);
 
 //    //Select * from orders where Buy_id = ? order by create_at desc
 //    // 2. Truy vấn danh sách tất cả các đơn hàng bán được của 1 Người Bán (Seller), sắp xếp đơn mới nhất xếp trên
-//    List<Order> findBySeller_IdOrderByCreatedAtDesc(Long sellerId);
+
     @EntityGraph(attributePaths = {"product", "product.images", "buyer"})
     List<Order> findBySeller_IdOrderByCreatedAtDesc(Long sellerId);
 
 //    // 3. Truy vấn danh sách đơn hàng bán được của Seller có bộ lọc theo trạng thái
-//    List<Order> findBySeller_IdAndStatusOrderByCreatedAtDesc(Long sellerId, OrderStatus status);
+
     @EntityGraph(attributePaths = {"product", "product.images", "buyer"})
     List<Order> findBySeller_IdAndStatusOrderByCreatedAtDesc(Long sellerId, OrderStatus status);
 
