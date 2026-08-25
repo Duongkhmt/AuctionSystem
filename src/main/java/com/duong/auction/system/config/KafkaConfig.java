@@ -42,7 +42,7 @@ public class KafkaConfig {
      */
     @Bean
     @SuppressWarnings("SpringJavaInjectionPointsAutowiringInspection")
-    public RetryTopicConfiguration auctionEndedRetryTopicConfig(KafkaTemplate<Object, Object> kafkaTemplate) {
+    public RetryTopicConfiguration auctionEndedRetryTopicConfig(KafkaTemplate<String, Object> kafkaTemplate) {
         return RetryTopicConfigurationBuilder
                 .newInstance()
                 .maxAttempts(3)                                                            // Tổng cộng tối đa 3 lần xử lý
