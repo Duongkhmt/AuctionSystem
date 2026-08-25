@@ -8,7 +8,6 @@ import lombok.Getter;
 import lombok.Setter;
 import org.springframework.web.multipart.MultipartFile;
 
-import java.io.Serializable;
 import java.math.BigDecimal;
 import java.time.LocalDateTime;
 import java.util.List;
@@ -16,7 +15,7 @@ import java.util.Map;
 
 @Getter
 @Setter
-public class ProductUpdateRequestDTO implements Serializable {
+public class ProductUpdateRequestDTO  {
     private static final long serialVersionUID = 1L;
 
     @NotNull(message = "Vui lòng chọn danh mục")
