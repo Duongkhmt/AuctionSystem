@@ -32,10 +32,7 @@ import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Optional;
 
-import com.duong.auction.system.dto.event.BidEventMessage;
 import com.duong.auction.system.service.engine.RedisAtomicBiddingEngine;
-import com.duong.auction.system.service.stream.AsyncBidStreamPublisher;
-import java.util.UUID;
 
 @Service
 @RequiredArgsConstructor
@@ -53,17 +50,20 @@ public class BiddingService {
     private final ProxyBiddingEngineHelper proxyBiddingEngineHelper;
     private final BidResponseHelper bidResponseHelper;
     private final RedisAtomicBiddingEngine redisEngine;
-    private final AsyncBidStreamPublisher streamPublisher;
     private static final int ANTI_SNIPING_WINDOW_MINUTES = 3;
     private static final int EXTENSION_MINUTES = 3;
 
     // =========================================================================
-    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS IN-MEMORY ATOMIC ENGINE + STREAM QUEUE
+    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS ATOMIC LUA SCRIPT (ĐƠN GIẢN & TỐI ƯU SIÊU TỐC)
     // =========================================================================
     @RateLimit(maxRequests = 10, timeWindowSeconds = 1)
     @CacheEvict(value = "bid_history", key = "#auctionId")
+    @Transactional
     public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
-        // 1. Lấy thông tin phiên đấu giá
+        // 1. Kiểm tra thông tin người đặt giá và phiên đấu giá
+        User bidder = userRepository.findById(bidderId)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+
         Auction auction = auctionRepository.findById(auctionId)
                 .or(() -> auctionRepository.findByProduct_Id(auctionId))
                 .orElseThrow(() -> new ApplicationException(ErrorCode.AUCTION_NOT_FOUND));
@@ -72,31 +72,32 @@ public class BiddingService {
             throw new ApplicationException(ErrorCode.AUCTION_NOT_RUNNING);
         }
 
-        // 2. Thực thi Lua Script so kè giá nguyên tử 0.02ms trên Redis RAM
+        // 2. REDIS ATOMIC (LUA SCRIPT): Gộp Đọc -> Kiểm tra -> Cập nhật giá thành 1 thao tác nguyên tử duy nhất trên RAM (0.02ms)
         boolean success = redisEngine.processBidAtomic(
                 auction.getId(),
                 bidderId,
                 requestDTO.getBidAmount(),
-                auction.getBidStep()
+                auction.getBidStep(),
+                auction.getCurrentPrice()
         );
 
+        // Request nào trả giá thấp hơn sẽ nhận kết quả "Thua giá" lập tức, 0 bị từ chối do xung đột hệ thống!
         if (!success) {
             throw new ApplicationException(ErrorCode.BID_AMOUNT_TOO_LOW);
         }
 
-        // 3. Đẩy tin nhắn vào Redis Stream Queue để Worker ghi DB ngầm phía sau
-        String eventId = UUID.randomUUID().toString();
-        BidEventMessage eventMessage = BidEventMessage.builder()
-                .eventId(eventId)
-                .auctionId(auction.getId())
-                .bidderId(bidderId)
-                .bidAmount(requestDTO.getBidAmount())
-                .timestamp(LocalDateTime.now(clock))
-                .build();
+        // 3. Nếu thắng giá -> Lưu ngay lượt Bid mới và cập nhật giá phiên đấu giá vào Database
+        Bid bid = new Bid();
+        bid.setAuction(auction);
+        bid.setBidder(bidder);
+        bid.setBidAmount(requestDTO.getBidAmount());
+        bid.setAutoBid(false);
+        bidRepository.save(bid);
 
-        streamPublisher.publishBidEvent(eventMessage);
+        auction.setCurrentPrice(requestDTO.getBidAmount());
+        auctionRepository.save(auction);
 
-        // 4. Trả phản hồi siêu tốc thành công cho Client
+        // 4. Trả phản hồi đặt giá thành công cho Client
         return BidResponseDTO.builder()
                 .auctionId(auction.getId())
                 .bidAmount(requestDTO.getBidAmount())

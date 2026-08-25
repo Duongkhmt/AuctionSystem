@@ -26,8 +26,9 @@ public class RedisAtomicBiddingEngine {
                 "local newBidAmount = tonumber(ARGV[1]) " +
                 "local bidderId = ARGV[2] " +
                 "local stepPrice = tonumber(ARGV[3]) " +
+                "local initialCurrentPrice = tonumber(ARGV[4]) " +
                 
-                "local currentPrice = tonumber(redis.call('HGET', stateKey, 'currentPrice') or '0') " +
+                "local currentPrice = tonumber(redis.call('HGET', stateKey, 'currentPrice') or initialCurrentPrice) " +
                 "local minPrice = currentPrice + stepPrice " +
                 
                 "if newBidAmount < minPrice then " +
@@ -48,7 +49,7 @@ public class RedisAtomicBiddingEngine {
     /**
      * Thực thi so kè giá nguyên tử trên Redis RAM
      */
-    public boolean processBidAtomic(Long auctionId, Long bidderId, BigDecimal bidAmount, BigDecimal stepPrice) {
+    public boolean processBidAtomic(Long auctionId, Long bidderId, BigDecimal bidAmount, BigDecimal stepPrice, BigDecimal initialCurrentPrice) {
         String redisStateKey = "auction:state:" + auctionId;
 
         Long result = redisTemplate.execute(
@@ -56,7 +57,8 @@ public class RedisAtomicBiddingEngine {
                 List.of(redisStateKey),
                 bidAmount.toString(),
                 bidderId.toString(),
-                stepPrice.toString()
+                stepPrice.toString(),
+                initialCurrentPrice.toString()
         );
 
         return Long.valueOf(1L).equals(result);
