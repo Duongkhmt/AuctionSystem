@@ -18,7 +18,7 @@ import java.util.concurrent.CompletableFuture;
 @RequiredArgsConstructor
 public class AuctionKafkaProducer {
 
-    private final KafkaTemplate<String, Object> kafkaTemplate;
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
 
     /**
      * Bắn thông điệp phiên đấu giá kết thúc lên Kafka Topic "auction.events.ended"
@@ -28,7 +28,7 @@ public class AuctionKafkaProducer {
         log.info("🚀 [Kafka Producer] Đang gửi sự kiện AUCTION_ENDED lên Kafka. AuctionId: {}, WinnerId: {}",
                 event.getAuctionId(), event.getWinnerId());
 
-        CompletableFuture<SendResult<String, Object>> future = kafkaTemplate.send(
+        CompletableFuture<SendResult<Object, Object>> future = kafkaTemplate.send(
                 KafkaConfig.TOPIC_AUCTION_ENDED,
                 String.valueOf(event.getAuctionId()), // Partition Key
                 event

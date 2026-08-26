@@ -18,6 +18,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.math.BigDecimal;
 import java.time.Clock;
@@ -46,6 +47,7 @@ public class AuctionScheduler {
 
     // Robot điều phối chạy ngầm định kỳ mỗi 10 giây (fixedRate = 10000ms)
     @Scheduled(fixedRate = 10000)
+    @Transactional
     public void processAuctionStatusTransitions() {
         LocalDateTime now = LocalDateTime.now(clock);
 
