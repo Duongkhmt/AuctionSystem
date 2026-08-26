@@ -94,16 +94,38 @@ public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requ
 
 ---
 
-# 📂 PHẦN 4: DANH SÁCH FILE VÀ TRẠNG THÁI TRIỂN KHAI
+# 🔴 PHẦN 4: BÀI TOÁN XỬ LÝ CHỐT PHIÊN ĐẤU GIÁ BẤT ĐỒNG BỘ (APACHE KAFKA & DLT)
+
+### 📌 1. Vấn Đề Của Bài Toán Kết Thúc Đấu Giá (`AUCTION_ENDED`)
+- Khi một phiên đấu giá kết thúc (do hết giờ hoặc người dùng Mua Ngay), hệ thống phải vừa đổi trạng thái phiên thầu, vừa đẻ đơn hàng `Order` UNPAID 48h, vừa gửi Email và Push Notification.
+- **Hậu quả nếu làm đồng bộ (Synchronous):** Nếu dịch vụ Email bị chậm hoặc rớt mạng, cả Robot `AuctionScheduler` bị đóng băng, dẫn đến lỗi Rollback làm người thắng thầu hợp lệ bị mất đơn hàng!
+
+---
+
+### ⚡ 2. Giải Pháp Tối Ưu: Event-Driven Architecture với Apache Kafka
+- **Luồng chính (`AuctionScheduler` / `BiddingService.executeBuyNow`):** Chốt `Auction.status = ENDED` và phát sự kiện `AuctionEndedEvent` lên Kafka Broker trong `< 2ms`.
+- **Luồng ngầm (`AuctionEndedConsumer`):** Tiêu thụ sự kiện ngầm, thực sự đẻ đơn hàng `Order` vào DB và gửi Email.
+- **Cơ chế Bảo vệ 3 Tầng:**
+  1. **Dual-Write Protection:** Dùng `TransactionSynchronizationManager.afterCommit(...)` đảm bảo DB Commit thành công 100% mới phát sự kiện Kafka.
+  2. **Non-Blocking Retry Topic & DLT:** Khi Consumer bị lỗi DB/mạng tạm thời, tin nhắn tự chuyển sang `auction.events.ended-retry` để thử lại 3 lần (mỗi lần 2s) mà không làm tắc nghẽn luồng chính. Nếu 3 lần vẫn hỏng, tin nhắn bị cô lập vào `auction.events.ended-dlt` kèm `@DltHandler`.
+  3. **Check-Then-Mark Idempotency:** Kiểm tra `redisTemplate.hasKey` trước, xử lý xong mới `set` key `PROCESSED` vào Redis 24h.
+
+---
+
+# 📂 PHẦN 5: DANH SÁCH FILE VÀ TRẠNG THÁI TRIỂN KHAI TỔNG THỂ
 
 | STT | Tên File | Vai Trò | Trạng Thái |
 | :--- | :--- | :--- | :--- |
 | 1 | [`RedisAtomicBiddingEngine.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/engine/RedisAtomicBiddingEngine.java) | Động cơ so kè giá nguyên tử Lua Script trên RAM | ✅ Completed |
-| 2 | [`BiddingService.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/BiddingService.java) | Tích hợp Redis Atomic gọn nhẹ | ✅ Completed |
+| 2 | [`BiddingService.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/BiddingService.java) | Tích hợp Redis Atomic & Kafka Buy-Now | ✅ Completed |
 | 3 | [`AuctionBiddingController.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/controller/AuctionBiddingController.java) | Nối dây Controller xử lý siêu tốc | ✅ Completed |
 | 4 | [`RateLimitAspect.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/aspect/RateLimitAspect.java) | Cầu dao chống spam bot ở vòng ngoài | ✅ Completed |
+| 5 | [`KafkaConfig.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/KafkaConfig.java) | Cấu hình Kafka Topic, Producer, ConsumerFactory & Non-Blocking Retry Topic 3 Tầng | ✅ Completed |
+| 6 | [`AuctionKafkaProducer.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/producer/AuctionKafkaProducer.java) | Producer phát sự kiện ngầm kèm CompletableFuture Callback | ✅ Completed |
+| 7 | [`AuctionEndedSettlementHelper.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/helper/AuctionEndedSettlementHelper.java) | Helper xử lý giao dịch `REQUIRES_NEW` chống Dual-Write & Self-Invocation | ✅ Completed |
+| 8 | [`AuctionEndedConsumer.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/consumer/AuctionEndedConsumer.java) | Consumer nhặt sự kiện tạo Đơn ngầm + Check-Then-Mark Redis 24h & `@DltHandler` | ✅ Completed |
 
 ---
 
 ### 🎯 TÓM LẠI:
-Giải pháp **Redis Atomic Lua Script** gọn nhẹ này giúp hệ thống Đấu Giá của bạn vừa **đạt hiệu năng cao tuyệt đối**, vừa **sạch sẽ, dễ hiểu 100%**, vừa **loại bỏ triệt để các rủi ro Race Condition**!
+Hệ thống Đấu Giá của bạn hiện đã hoàn thiện **2 Động Cơ Kiến Trúc Hàng Đầu**: **Redis Atomic Lua Script** (cho luồng Đặt Giá cao vận tốc) và **Apache Kafka Event-Driven Architecture** (cho luồng Chốt Thầu & Đẻ Đơn Ngầm)! 🚀

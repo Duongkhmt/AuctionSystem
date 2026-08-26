@@ -21,10 +21,11 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 
 - **Java:** 21 (Eclipse Temurin 21)
 - **Spring Boot:** 4.1.0 (starter parent `org.springframework.boot:4.1.0`)
+- **Apache Kafka (Spring Kafka):** `org.springframework.kafka:spring-kafka` — Hạ tầng Event-Driven Messaging bất đồng bộ xử lý vòng đời kết thúc đấu giá (`AUCTION_ENDED`), tích hợp cơ chế Non-Blocking Retry Topic 3 tầng (`-retry`, `-dlt`), cô lập tin nhắn hỏng DLT (`@DltHandler`), chống Dual-Write bằng Spring `afterCommit`, và Check-Then-Mark Idempotent Consumer kết hợp với Redis 24h.
 - **Spring Security:** `org.springframework.boot:spring-boot-starter-security`
 - **Spring Data JPA:** `org.springframework.boot:spring-boot-starter-data-jpa`
 - **Validation:** `org.springframework.boot:spring-boot-starter-validation`
-- **Spring Data Redis:** `org.springframework.boot:spring-boot-starter-data-redis` — Bộ nhớ đệm phân tán Redis (Caching `categories`, `auctions`, `bid_history`), Aspect giới hạn tốc độ Rate Limit bằng Redis Lua Script, và Động cơ so kè giá nguyên tử Redis Atomic Lua Script (0.02ms) triệt tiêu Race Condition khi 100+ requests thầu đồng thời.
+- **Spring Data Redis:** `org.springframework.boot:spring-boot-starter-data-redis` — Bộ nhớ đệm phân tán Redis (Caching `categories`, `auctions`, `bid_history`), Aspect giới hạn tốc độ Rate Limit bằng Redis Lua Script, Động cơ so kè giá nguyên tử Redis Atomic Lua Script (0.02ms) triệt tiêu Race Condition khi 100+ requests thầu đồng thời, và Redis Check-Then-Mark 24h chống đẻ trùng đơn hàng.
 - **Redisson:** 3.35.0 (`org.redisson:redisson-spring-boot-starter`) — Hỗ trợ Distributed Lock cho hạ tầng đa nút.
 - **Database:** PostgreSQL (`org.postgresql:postgresql`, phiên bản driver theo Spring Boot BOM)
 - **MapStruct:** 1.6.2 (`org.mapstruct:mapstruct` và `org.mapstruct:mapstruct-processor`)
