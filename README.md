@@ -3,9 +3,8 @@
 **DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng.
 
 Hệ thống giải quyết bài toán đấu giá hàng hóa minh bạch, cạnh tranh theo thời gian thực và quản lý tài sản động. 
-Nền tảng hỗ trợ người dùng đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), 
-hỗ trợ quy trình kiểm duyệt bài đăng bởi Quản trị viên (Admin), tích hợp công cụ tự động đấu giá (Proxy Bidding Engine), 
-cơ chế chống bắn tỉa phút chót (Soft-Close Anti-Sniping), tự động xử lý đơn hàng bùng tiền quá 48h kèm phạt gậy vi phạm (Unpaid Strikes), và tự động hóa chuyển đổi trạng thái phiên đấu giá ngầm bằng Robot Scheduler.
+Nền tảng hỗ trợ người dùng đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), hỗ trợ quy trình kiểm duyệt bài đăng bởi Quản trị viên (Admin), tích hợp công cụ tự động đấu giá (Proxy Bidding Engine), 
+chế độ chốt thầu thời gian cứng (Hard-Close Mode — Hết giờ là hết giờ), tự động xử lý đơn hàng bùng tiền quá 48h kèm phạt gậy vi phạm (Unpaid Strikes), và tự động hóa chuyển đổi trạng thái phiên đấu giá ngầm bằng Robot Scheduler.
 
 ### Đối tượng sử dụng:
 **User (Người dùng hệ thống):** Xem thông tin sản phẩm, tham gia đặt giá cạnh tranh, cài đặt mức giá trần tự động đấu giá (Proxy Bid), 
@@ -198,8 +197,7 @@ thuộc tính động dạng `JSONB` (cho phép cấu hình linh hoạt thông s
 - **Proxy Bidding Engine:** Bidder có thể nhập giá trần `maxAutoBidAmount`. Hệ thống tự động cạnh tranh và nâng giá hiện tại từng nấc 
 để giữ vị trí dẫn đầu cho Bidder mà không vượt quá mức trần đã cài. Mọi lượt nhảy giá tự động đều sinh ra bản ghi `Bid` để đảm bảo 100% Audit Trail.
 
-- **Soft-Close Anti-Sniping:** Nếu có lượt đặt giá hợp lệ xuất hiện trong 3 phút cuối cùng trước khi hết giờ, thời gian kết thúc phiên (`endTime`) 
-tự động gia hạn thêm **+3 phút**.
+- **Chốt thầu thời gian cứng (Hard-Close Mode):** Phiên đấu giá kết thúc chính xác tại mốc thời gian `endTime` được thiết lập ban đầu (hết giờ là hết giờ), bảo đảm thời gian chốt thầu cố định và minh bạch.
 
 - **Mua Ngay (Buy Now):** Đối với phiên có thiết lập giá mua ngay `buyNowPrice`, Bidder chấp nhận mức giá này có thể kích hoạt mua ngay. 
 Hệ thống sẽ lập tức chốt phiên (`ENDED`), ghi nhận chiến thắng cho Bidder và cập nhật giá hiện tại bằng giá mua ngay.
@@ -351,7 +349,7 @@ Dự án áp dụng Pure Unit Testing với khung kiểm thử chuyên sâu:
 - **Thư viện:** JUnit 5, Mockito (`MockitoExtension`), AssertJ, JaCoCo Maven Plugin (0.8.12).
 - **Unit Test Suites (7 file test suite lớn):**
   - `ProductServiceTest`: Kiểm thử độc lập cho tạo sản phẩm, upload ảnh mây, admin duyệt/từ chối, hủy phiên và relist bài thầu.
-  - `BiddingServiceTest`: Kiểm thử thao tác đặt giá, gia hạn soft-close anti-sniping, lịch sử bid và mua ngay Buy Now.
+  - `BiddingServiceTest`: Kiểm thử thao tác đặt giá, thời gian cứng Hard-Close Mode, lịch sử bid và mua ngay Buy Now.
   - `OrderServiceTest`: Kiểm thử truy vấn đơn trúng thầu, checkout thanh toán, người bán xuất hàng và người mua xác nhận nhận hàng.
   - `CategoryServiceTest`: Kiểm thử lọc danh mục sản phẩm active.
   - `AuctionSchedulerTest`: Kiểm thử robot chốt thầu hết giờ, phân biệt kịch bản `ENGLISH` vs `RESERVE`.
@@ -376,7 +374,7 @@ Checklist trạng thái phát triển dựa trên source code thực tế:
 - [x] Đấu giá trực tuyến (Bidding Engine)
 - [x] Tự động đấu giá (Proxy Bidding Engine)
 - [x] Anti-Shill Bidding (chặn Seller tự bid) & Anti-Self-Outbid (chặn người dẫn đầu đè giá)
-- [x] Chống bắn tỉa phút chót (Soft-Close Anti-Sniping tự động cộng 3 phút)
+- [x] Chốt thầu thời gian cứng (Hard-Close Mode — Hết giờ là hết giờ)
 - [x] Mua ngay sản phẩm với giá cố định (Buy Now)
 - [x] Lịch sử đấu giá công khai mã hóa ẩn danh tên người đặt
 - [x] Quản lý đơn hàng trúng thầu & thanh toán Checkout / Xuất hàng / Xác nhận nhận hàng

@@ -8,7 +8,7 @@
 | 2     | Robot quét trạng thái ngầm (Scheduler)      | Robot tự động (10s/lần) | Tự động kích hoạt mở/khóa phiên, sinh đơn và dọn đơn bùng 48h                |
 | 3     | Engine tự động đấu giá (Proxy Bidding)      | Thuật toán máy tính     | Đại diện người mua trả giá thông minh theo ủy quyền                          |
 | 4     | Thang bước giá tăng dần tự động             | Quy tắc tính toán       | Tự nâng bước giá tối thiểu tương thích với giá trị tài sản                   |
-| 5     | Chống bắn tỉa phút chót (Anti-Sniping)      | Quy tắc thời gian       | Kéo dài thêm 3 phút nếu có lượt bid ở phút chót để tạo sự bình đẳng          |
+| 5     | Chốt thầu thời gian cứng (Hard-Close Mode)  | Quy tắc thời gian       | Khóa thầu chính xác mốc `endTime` được thiết lập ban đầu (Hết giờ là hết giờ) |
 | 6     | Cơ chế ẩn danh người tham gia (Masking)     | Quy tắc bảo mật         | Mã hóa tên người đặt giá để bảo vệ dữ liệu cá nhân                           |
 | 7     | Đồng bộ giao dịch tài nguyên mây (CDN Sync) | Quy tắc giao dịch       | Tự động dọn ảnh rác trên mây khi hỏng giao dịch DB                           |
 | 8     | Xử lý bùng tiền & Gậy vi phạm (3-Strikes)   | Quy tắc chế tài tự động | Tự động hủy đơn UNPAID quá 48h, phạt gậy và cấm đấu giá 90 ngày khi đủ 3 gậy |
@@ -182,30 +182,25 @@ Tự động áp dụng mỗi khi kiểm tra tính hợp lệ của lượt đ�
 
 ---
 
-### Cơ chế chống gài giá phút chót / Chống bắn tỉa (Soft-Close Anti-Sniping Window)
+### Cơ chế chốt thầu thời gian cứng (Hard-Close Mode — Hết giờ là hết giờ)
 
 **Bài toán kinh doanh**  
-Thủ đoạn "Sniping" (Bắn tỉa) là việc người mua dùng công cụ tự động canh gạt giá vào đúng 1 millisecond cuối cùng trước khi hết giờ. Việc này khiến những người mua thật sự khác không kịp phản ứng bấm phím, dẫn tới sản phẩm bị mua hớ với giá rẻ và gây ức chế cho cộng đồng.
+Đảm bảo mốc thời gian kết thúc của phiên đấu giá là cố định, minh bạch và nhất quán 100%. Người bán và người mua đều biết chính xác thời điểm phiên đấu giá khép lại.
 
 **Mục tiêu**  
-Triệt phá thủ đoạn bắn tỉa, tạo cơ hội phản công công bằng cho tất cả các bên quan tâm đến tài sản.
+Chốt thầu đúng mốc giờ G, bảo đảm tính dự đoán thời gian cho toàn bộ quy trình hậu thầu và tạo sự công bằng thời hạn cho mọi bên tham gia.
 
 **Đối tượng sử dụng / Điều kiện kích hoạt**  
-Tự động kích hoạt khi có một lượt đặt giá hợp lệ gửi vào phiên đấu giá trong khung thời gian sát giờ G.
+Tự động kích hoạt bởi Robot Scheduler khi thời gian hệ thống chạm mốc `endTime`.
 
 **Luồng thực hiện**  
-1. Hệ thống nhận một lượt đặt giá hợp lệ.
-2. Hệ thống lấy thời gian hiện tại (`now`) và thời gian kết thúc của phiên (`endTime`).
-3. Hệ thống kiểm tra: NẾU `(endTime - 3 phút) <= now` (tức là lượt bid nằm trong **3 phút cuối cùng**).
-4. Hệ thống phát lệnh tự động cộng thêm **+3 phút** vào `endTime` của phiên đấu giá!
-5. Hệ thống trả về cờ báo `timeExtended = true` và thời gian kết thúc mới cho giao diện cập nhật.
+1. Robot Scheduler chạy quét định kỳ 10s/lần.
+2. Robot lấy thời gian hiện tại (`now`) và danh sách phiên `RUNNING` có `endTime <= now`.
+3. Robot gọi `AuctionEndedSettlementHelper` để khóa phiên sang `ENDED`, xác định Winner và phát sự kiện Kafka `AuctionEndedEvent`.
+4. Lượt đặt giá cận giờ vẫn cập nhật giá mới nhưng giữ nguyên mốc `endTime` ban đầu mà không kéo dài thêm thời gian.
 
 **Quy tắc nghiệp vụ**  
-- [Cửa sổ kích hoạt là 3 phút cuối (`ANTI_SNIPING_WINDOW_MINUTES = 3`)] — vì 3 phút là khoảng thời gian đủ cho một con người bình thường nhận thông báo và đưa ra quyết định bấm nâng giá.
-- [Mỗi lần kích hoạt cộng thêm đúng 3 phút (`EXTENSION_MINUTES = 3`)] — vì kéo dài vừa đủ để cạnh tranh tiếp mà không làm phiền những người tham gia khác.
-
-**Trường hợp đặc biệt**  
-- Lượt bid vào ở phút thứ 4 trước khi kết thúc: Không kích hoạt gia hạn (vì nằm ngoài cửa sổ 3 phút).
+- [Thời hạn chốt thầu cố định] — mốc `endTime` không bị kéo dài bởi các lượt bid phát sinh ở phút chót.
 
 **Liên quan tới**  
 - [FUNCTIONAL-SPEC-GUEST-BIDDER.md](./FUNCTIONAL-SPEC-GUEST-BIDDER.md#dat-gia-thu-cong-dat-gia-tu-dong-proxy-bid)

@@ -205,7 +205,7 @@ Hệ thống hoạt động theo mô hình kiến trúc phân lớp chuẩn (Lay
 
 ### Services & Helpers
 - **`ProductService`**: Quản lý toàn bộ vòng đời sản phẩm: validate, tạo bản ghi, upload ảnh Cloudinary song song, đăng ký rollback hook, sửa/xóa ảnh, duyệt bài Admin, relist.
-- **`BiddingService`**: Quản lý luồng đặt giá cạnh tranh, gọi Proxy Bidding Engine so kè trần ngân sách, kích hoạt kéo dài thời gian Soft-close (Anti-sniping 3 phút), xử lý chốt đơn Mua Ngay.
+- **`BiddingService`**: Quản lý luồng đặt giá cạnh tranh, sử dụng động cơ nguyên tử Redis Lua Script (0.02ms) chốt thầu thời gian cứng Hard-Close Mode (hết giờ là hết giờ), xử lý chốt đơn Mua Ngay.
 - **`OrderService`**: Quản lý luồng đơn hàng: xem đơn trúng thầu, thực hiện checkout tạo giao dịch Payment, chuyển trạng thái đơn hàng (PAID → SHIPPING → COMPLETED).
 - **`CloudinaryService`**: Upload song song nhiều file ảnh lên Cloudinary (`CompletableFuture`), dọn dẹp ảnh lỗi hoặc ảnh cần xóa theo `publicId`.
 - **`AuctionScheduler`**: Robot tự động chạy định kỳ 10s: chuyển trạng thái `SCHEDULED` → `RUNNING`, chốt Winner khi phiên hết giờ, sinh đơn hàng `UNPAID` (hạn 48h), quét hủy đơn quá 48h và cộng strike phạt khóa 90 ngày.

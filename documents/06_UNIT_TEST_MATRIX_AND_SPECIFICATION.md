@@ -34,7 +34,7 @@
 - [x] **TS-BID-03** (Negative): Đặt giá thất bại do người dùng (`bidderId`) không tồn tại trong hệ thống.
 - [x] **TS-BID-04** (Negative): Đặt giá thất bại do phiên đấu giá (`auctionId`) không tồn tại.
 - [x] **TS-BID-05** (Positive): Đặt giá thành công bình thường (Không nằm trong cửa sổ Anti-sniping) -> Giá thầu cập nhật, lưu vết `Bid`.
-- [x] **TS-BID-06** (Positive - Soft Close): Đặt giá thành công trong 3 phút cuối (Anti-sniping window) -> Tự động gia hạn thời gian kết thúc (`endTime`) thêm 3 phút.
+- [x] **TS-BID-06** (Positive - Hard Close): Đặt giá thành công cận giờ kết thúc -> Giữ nguyên thời gian kết thúc (`endTime`) ban đầu (Hard-Close Mode).
 - [x] **TS-BID-07** (Positive - Proxy Bidding): Đặt giá với `maxAutoBidAmount` -> Gọi Proxy Bidding Engine tự động tính toán giá thầu chiến thắng mới.
 
 #### 3. Phương thức `executeBuyNow(Long bidderId, Long auctionId)` - Mua ngay

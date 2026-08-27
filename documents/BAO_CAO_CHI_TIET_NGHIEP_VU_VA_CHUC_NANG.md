@@ -7,7 +7,7 @@
 ### 1. Tổng quan Dự án & Bài toán Kinh doanh
 - **DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho Nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng (Nhà đất, Xe hơi, Tranh nghệ thuật, Đồ cổ, Đồ điện tử...).
 - Hệ thống giải quyết bài toán giao dịch tài sản minh bạch, gia tăng cạnh tranh giá theo thời gian thực (*Real-time Competitive Bidding*) và quản lý thuộc tính tài sản động (*Dynamic Product Attributes*).
-- Nền tảng hỗ trợ quy trình kiểm duyệt bài đăng nghiêm ngặt bởi Quản trị viên (*Admin Moderation*), tích hợp **Động cơ Đấu giá Tự động (Proxy Bidding Engine)**, **Cơ chế Chống bắn tỉa phút chót (Soft-Close Anti-Sniping)**, **Tự động xử lý đơn hàng bùng tiền quá 48h kèm Chế tài phạt gậy vi phạm (Unpaid 3-Strikes Penalty System)**, và **Tự động hóa vòng đời trạng thái bằng Robot ngầm (AuctionScheduler)**.
+- Nền tảng hỗ trợ quy trình kiểm duyệt bài đăng nghiêm ngặt bởi Quản trị viên (*Admin Moderation*), tích hợp **Động cơ Đấu giá Tự động (Proxy Bidding Engine)**, **Chế độ Chốt Thầu Thời Gian Cứng (Hard-Close Mode — Hết giờ là hết giờ)**, **Tự động xử lý đơn hàng bùng tiền quá 48h kèm Chế tài phạt gậy vi phạm (Unpaid 3-Strikes Penalty System)**, và **Tự động hóa vòng đời trạng thái bằng Robot ngầm (AuctionScheduler)**.
 
 ### 2. Các Đối tượng Tham gia Hệ thống (Actors)
 - **Khách vãng lai (Guest):** Xem danh mục sản phẩm, duyệt danh sách sản phẩm công khai, xem chi tiết thuộc tính động, đếm ngược thời gian và xem lịch sử thầu ẩn danh.
@@ -84,10 +84,10 @@ Tự động tăng/giảm bước giá tối thiểu (`bidStep`) tương thích 
 
 ---
 
-### 5. Cơ Chế Chống Bắn Tỉa Phút Chót (Soft-Close Anti-Sniping Window)
-- **Khung thời gian kích hoạt:** 3 phút cuối cùng trước khi hết giờ (`endTime - 3 phút <= now`).
-- **Hành động:** NẾU có 1 lượt đặt giá hợp lệ gửi vào ➔ Hệ thống tự động cộng thêm **+3 phút** vào `endTime` của phiên.
-- **Mục tiêu:** Triệt phá các công cụ bot tự động bắn tỉa ở millisecond cuối, tạo sự bình đẳng cho người mua thực.
+### 5. Chế Độ Chốt Thầu Thời Gian Cứng (Hard-Close Mode)
+- **Quy tắc chốt thầu:** Phiên đấu giá kết thúc chính xác tại mốc thời gian `endTime` được thiết lập ban đầu (hết giờ là hết giờ).
+- **Hành động:** Khi đến mốc `endTime`, Robot Scheduler tự động chuyển phiên thầu sang `ENDED` và xác định Winner. Lượt đặt giá cận giờ vẫn giữ nguyên mốc `endTime` mà không kéo dài thêm thời gian.
+- **Mục tiêu:** Đảm bảo thời hạn chốt thầu cố định, minh bạch và nhất quán cho tất cả người tham gia.
 
 ---
 

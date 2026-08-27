@@ -26,7 +26,7 @@ Vì Redis xử lý lệnh theo cơ chế **Đơn luồng (Single-thread)**, toà
 # 🔴 PHẦN 2: LUỒNG THỰC THI TRONG MÃ NGUỒN (`BiddingService.java`)
 
 ```java
-@RateLimit(maxRequests = 10, timeWindowSeconds = 1)
+@RateLimit(maxRequests = 5, timeWindowSeconds = 10)
 @CacheEvict(value = "bid_history", key = "#auctionId")
 @Transactional
 public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {

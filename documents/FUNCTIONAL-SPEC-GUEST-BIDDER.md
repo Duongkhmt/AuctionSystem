@@ -140,7 +140,7 @@ Người mua (Bidder) đã đăng nhập khi phiên đấu giá đang trong th�
    - Hệ thống tự động kích hoạt **Thuật toán Đấu giá Tự động**.
    - So sánh hai mức giá trần. Người có giá trần cao hơn sẽ giữ vị trí dẫn đầu.
    - Giá hiện tại của sản phẩm được điều chỉnh tự động nhảy lên = `Mức giá trần của người thua + 1 bước giá động` (nhưng không vượt quá trần của người thắng).
-5. Hệ thống kiểm tra thời gian còn lại của phiên: NẾU lượt đặt giá nằm trong **3 phút cuối cùng**, hệ thống **tự động gia hạn thêm 3 phút** vào thời gian kết thúc (Soft-close Anti-sniping).
+ 5. Hệ thống kiểm tra thời gian kết thúc của phiên: Chốt thầu thời gian cứng (Hard-Close Mode) giữ nguyên mốc thời gian kết thúc ban đầu.
 6. Hệ thống cập nhật giá hiện tại mới của phiên và thông báo kết quả cho người mua.
 
 **Quy tắc nghiệp vụ**  
@@ -149,7 +149,7 @@ Người mua (Bidder) đã đăng nhập khi phiên đấu giá đang trong th�
 - [Chống đè giá chính mình (Anti-Self-Outbid)] — người đang nắm giữ giá cao nhất không được tự đặt giá nâng lên tiếp, nhằm tránh việc người mua bấm nhầm tốn thêm tiền không cần thiết.
 - [Mức giá đặt phải lớn hơn hoặc bằng Giá hiện tại + Bước giá động] — vì đảm bảo mỗi lượt đấu giá phải mang lại sự tăng trưởng giá trị thực sự cho tài sản (chi tiết bậc giá xem tại [SYSTEM-BEHAVIOR.md](./SYSTEM-BEHAVIOR.md#quy-tac-tinh-toan-buoc-gia-dong-theo-gia-tri-san-pham)).
 - [Giá trần Auto-bid phải lớn hơn hoặc bằng giá đặt ban đầu] — vì không thể cài đặt giới hạn tối đa thấp hơn mức giá khởi điểm trả ra.
-- [Gia hạn phút chót (Anti-Sniping)] — lượt đặt giá trong 3 phút cuối sẽ tự động cộng thêm 3 phút vào thời gian kết thúc, nhằm triệt phá thủ đoạn dùng bot tự động bắn tỉa ở millisecond cuối cùng, tạo sự bình đẳng cho tất cả người tham gia.
+- [Thời hạn chốt thầu cố định (Hard-Close Mode)] — phiên đấu giá kết thúc chính xác tại mốc thời gian `endTime` được thiết lập ban đầu (hết giờ là hết giờ).
 
 **Trường hợp đặc biệt**  
 - Hai người cùng cài mức giá trần Auto-bid bằng nhau: Người cài đặt trước sẽ được ưu tiên giữ vị trí dẫn đầu (theo nguyên tắc First-Come, First-Served).
