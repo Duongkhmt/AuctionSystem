@@ -50,13 +50,11 @@ public class BiddingService {
     private final ProxyBiddingEngineHelper proxyBiddingEngineHelper;
     private final BidResponseHelper bidResponseHelper;
     private final RedisAtomicBiddingEngine redisEngine;
-    private static final int ANTI_SNIPING_WINDOW_MINUTES = 3;
-    private static final int EXTENSION_MINUTES = 3;
 
     // =========================================================================
     // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS ATOMIC LUA SCRIPT (ĐƠN GIẢN & TỐI ƯU SIÊU TỐC)
     // =========================================================================
-    @RateLimit(maxRequests = 10, timeWindowSeconds = 1)
+    @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
     @CacheEvict(value = "bid_history", key = "#auctionId")
     @Transactional
     public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
@@ -72,7 +70,7 @@ public class BiddingService {
             throw new ApplicationException(ErrorCode.AUCTION_NOT_RUNNING);
         }
 
-        // 2. REDIS ATOMIC (LUA SCRIPT): Gộp Đọc -> Kiểm tra -> Cập nhật giá thành 1 thao tác nguyên tử duy nhất trên RAM (0.02ms)
+        // 2. REDIS ATOMIC (LUA SCRIPT): Gộp Đọc -> Kiểm tra -> Cập nhật giá thành 1 thao tác nguyên tử duy nhất trên RAM
         boolean success = redisEngine.processBidAtomic(
                 auction.getId(),
                 bidderId,
