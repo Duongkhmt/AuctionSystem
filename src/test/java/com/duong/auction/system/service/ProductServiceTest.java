@@ -34,7 +34,10 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
 import org.springframework.web.multipart.MultipartFile;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -43,6 +46,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.BDDMockito.then;
 import static org.mockito.Mockito.*;
 
@@ -94,6 +98,9 @@ class ProductServiceTest {
     @Mock
     private ProductAuctionLookupHelper productAuctionLookupHelper; // Giả lập helper tìm kiếm cặp Product + Auction
 
+    @Mock
+    private Clock clock; // Giả lập đồng hồ hệ thống
+
     // ===== ĐỐI TƯỢNG CẦN KIỂM THỬ THẬT =====
     @InjectMocks
     private ProductService productService; // Instance ProductService thật được tiêm các Mock trên
@@ -108,6 +115,9 @@ class ProductServiceTest {
      */
     @BeforeEach
     void setUp() {
+        lenient().when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+        lenient().when(clock.instant()).thenReturn(Instant.now());
+
         sampleSeller = new User();
         sampleSeller.setId(10L);
         sampleSeller.setEmail("seller@example.com");

@@ -2,6 +2,7 @@ package com.duong.auction.system.service;
 
 import com.cloudinary.Cloudinary;
 import com.cloudinary.Uploader;
+import com.duong.auction.system.config.CloudinaryProperties;
 import com.duong.auction.system.exception.ApplicationException;
 import com.duong.auction.system.exception.ErrorCode;
 import org.junit.jupiter.api.BeforeEach;
@@ -39,12 +40,17 @@ class CloudinaryServiceTest {
     @Mock
     private Uploader uploader;
 
+    @Mock
+    private CloudinaryProperties cloudinaryProperties;
+
     @InjectMocks
     private CloudinaryService cloudinaryService;
 
     @BeforeEach
     void setUp() {
         lenient().when(cloudinary.uploader()).thenReturn(uploader);
+        lenient().when(cloudinaryProperties.getFolder()).thenReturn("auction-products");
+        lenient().when(cloudinaryProperties.getResourceType()).thenReturn("image");
     }
 
     @Test

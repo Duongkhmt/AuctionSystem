@@ -16,12 +16,16 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import com.duong.auction.system.service.helper.AuctionEndedSettlementHelper;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -30,6 +34,7 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.BDDMockito.given;
 import static org.mockito.BDDMockito.then;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
@@ -54,6 +59,12 @@ class AuctionSchedulerTest {
     @Mock
     private OrderMapper orderMapper; // Giả lập chuyển đổi Auction + Winner sang Order Entity
 
+    @Mock
+    private Clock clock; // Giả lập đồng hồ hệ thống
+
+    @Mock
+    private AuctionEndedSettlementHelper settlementHelper; // Giả lập helper xử lý giao dịch từng phiên
+
     @InjectMocks
     private AuctionScheduler auctionScheduler; // Instance Robot Scheduler thật được tiêm @Mock
 
@@ -66,6 +77,19 @@ class AuctionSchedulerTest {
      */
     @BeforeEach
     void setUp() {
+        lenient().when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+        lenient().when(clock.instant()).thenReturn(Instant.now());
+
+        lenient().doAnswer(invocation -> {
+            Auction a = invocation.getArgument(0);
+            Bid b = invocation.getArgument(1);
+            if (b != null) {
+                a.setWinner(b.getBidder());
+            }
+            a.setStatus(AuctionStatus.ENDED);
+            return null;
+        }).when(settlementHelper).processSingleAuctionEnded(any(), any(), any());
+
         sampleWinner = new User();
         sampleWinner.setId(200L);
         sampleWinner.setEmail("winner@example.com");
@@ -103,27 +127,19 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(500000));
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
-
-            Order mockOrder = mock(Order.class);
-            given(orderMapper.toEntity(sampleEnglishAuction, sampleWinner, highestBid.getBidAmount())).willReturn(mockOrder);
-
             given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot kích hoạt tiến trình quét định kỳ processAuctionStatusTransitions
             auctionScheduler.processAuctionStatusTransitions();
 
-            // 3. THEN: Kiểm tra phiên ENGLISH chuyển sang ENDED, gán Winner và tự động tạo đơn hàng UNPAID
-            assertThat(sampleEnglishAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
-            assertThat(sampleEnglishAuction.getWinner()).isEqualTo(sampleWinner);
-
-            then(orderRepository).should(times(1)).save(mockOrder);
+            // 3. THEN: Kiểm tra phiên ENGLISH được bàn giao cho settlementHelper xử lý
+            then(settlementHelper).should(times(1)).processSingleAuctionEnded(eq(sampleEnglishAuction), eq(highestBid), any());
             then(auctionRepository).should(times(1)).autoStartAuctions(any(), eq(AuctionStatus.SCHEDULED), eq(AuctionStatus.RUNNING), eq(ProductStatus.APPROVED));
             then(auctionRepository).should(times(1)).autoExpireBuyNowAuctions(any(), eq(AuctionStatus.RUNNING), eq(AuctionStatus.EXPIRED), eq(AuctionType.BUY_NOW));
         }
 
         @Test
-        @DisplayName("Đấu giá RESERVE kết thúc nhưng bid cao nhất < reservePrice -> Không có Winner (ế) và không tạo Order")
+        @DisplayName("Đấu giá RESERVE kết thúc nhưng bid cao nhất < reservePrice -> Chuyển sang settlementHelper xử lý")
         void processAuctionTransitions_ReserveAuction_BidLowerThanReserve_NoWinner() {
             // 1. GIVEN: Phiên RESERVE giá sàn 1M nhưng bid cao nhất chỉ đạt 800k (< reservePrice)
             given(auctionRepository.findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(eq(AuctionStatus.RUNNING), eq(AuctionType.BUY_NOW), any()))
@@ -135,22 +151,17 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(800000)); // 800k < 1M
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
-
             given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot thực thi quét
             auctionScheduler.processAuctionStatusTransitions();
 
-            // 3. THEN: Phiên RESERVE chuyển sang ENDED nhưng winner = null (bán không thành công) và không tạo Order
-            assertThat(sampleReserveAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
-            assertThat(sampleReserveAuction.getWinner()).isNull();
-
-            then(orderRepository).should(never()).save(any());
+            // 3. THEN: Chuyển sang settlementHelper xử lý
+            then(settlementHelper).should(times(1)).processSingleAuctionEnded(eq(sampleReserveAuction), eq(highestBid), any());
         }
 
         @Test
-        @DisplayName("Đấu giá RESERVE kết thúc có bid >= reservePrice -> Gán Winner và tạo Order")
+        @DisplayName("Đấu giá RESERVE kết thúc có bid >= reservePrice -> Chuyển sang settlementHelper xử lý")
         void processAuctionTransitions_ReserveAuction_BidMeetsReserve_SetsWinnerAndOrder() {
             // 1. GIVEN: Phiên RESERVE giá sàn 1M và mức bid đạt 1.2M (>= reservePrice)
             given(auctionRepository.findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(eq(AuctionStatus.RUNNING), eq(AuctionType.BUY_NOW), any()))
@@ -162,21 +173,13 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(1200000)); // 1.2M >= 1M
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(orderRepository.findAuctionIdsByAuctionIdIn(any())).willReturn(java.util.Set.of());
-
-            Order mockOrder = mock(Order.class);
-            given(orderMapper.toEntity(sampleReserveAuction, sampleWinner, highestBid.getBidAmount())).willReturn(mockOrder);
-
             given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot chạy quét
             auctionScheduler.processAuctionStatusTransitions();
 
-            // 3. THEN: Chốt Winner thành công và tạo Đơn hàng cho Winner
-            assertThat(sampleReserveAuction.getStatus()).isEqualTo(AuctionStatus.ENDED);
-            assertThat(sampleReserveAuction.getWinner()).isEqualTo(sampleWinner);
-
-            then(orderRepository).should(times(1)).save(mockOrder);
+            // 3. THEN: Chuyển sang settlementHelper xử lý
+            then(settlementHelper).should(times(1)).processSingleAuctionEnded(eq(sampleReserveAuction), eq(highestBid), any());
         }
     }
 }

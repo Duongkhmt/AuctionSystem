@@ -19,6 +19,7 @@ import com.duong.auction.system.repository.UserRepository;
 import com.duong.auction.system.service.helper.BidResponseHelper;
 import com.duong.auction.system.service.helper.ProxyBiddingEngineHelper;
 import com.duong.auction.system.service.helper.ProxyBiddingEngineHelper.ProxyBiddingResult;
+import com.duong.auction.system.service.engine.RedisAtomicBiddingEngine;
 import com.duong.auction.system.validator.BidValidator;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -31,7 +32,10 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
 import java.math.BigDecimal;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.LocalDateTime;
+import java.time.ZoneId;
 import java.util.List;
 import java.util.Optional;
 
@@ -79,6 +83,12 @@ class BiddingServiceTest {
     @Mock
     private BidResponseHelper bidResponseHelper; // Giả lập đóng gói DTO phản hồi
 
+    @Mock
+    private RedisAtomicBiddingEngine redisEngine; // Giả lập động cơ so kè giá nguyên tử Redis
+
+    @Mock
+    private Clock clock; // Giả lập đồng hồ thời gian hệ thống
+
     // ===== ĐỐI TƯỢNG CẦN KIỂM THỬ THẬT (CLASS UNDER TEST) =====
     @InjectMocks
     private BiddingService biddingService; // Khởi tạo BiddingService thật và tự động tiêm các đối tượng @Mock ở trên vào constructor
@@ -92,6 +102,9 @@ class BiddingServiceTest {
      */
     @BeforeEach
     void setUp() {
+        lenient().when(clock.getZone()).thenReturn(ZoneId.systemDefault());
+        lenient().when(clock.instant()).thenReturn(Instant.now());
+
         // Tạo đối tượng Người đấu giá giả lập (User ID = 100)
         sampleBidder = new User();
         sampleBidder.setId(100L);
@@ -171,40 +184,25 @@ class BiddingServiceTest {
 
             given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
-            given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auctionId))
-                    .willReturn(Optional.empty()); // Chưa có lượt bid nào trước đó
-
-            // Giả lập kết quả trả về từ động cơ Proxy Bidding Engine
-            Bid winningBid = new Bid();
-            winningBid.setBidAmount(bidAmount);
-            ProxyBiddingResult proxyResult = new ProxyBiddingResult(List.of(winningBid), winningBid, bidAmount);
-
-            given(proxyBiddingEngineHelper.processProxyBidding(sampleAuction, sampleBidder, bidAmount, null))
-                    .willReturn(proxyResult);
-
-            // Giả lập Helper trả về DTO kết quả
-            BidResponseDTO expectedResponse = mock(BidResponseDTO.class);
-            given(bidResponseHelper.buildResponse(sampleAuction, winningBid, false))
-                    .willReturn(expectedResponse);
+            given(redisEngine.processBidAtomic(eq(auctionId), eq(bidderId), eq(bidAmount), eq(sampleAuction.getBidStep()), eq(sampleAuction.getCurrentPrice())))
+                    .willReturn(true);
 
             // 2. WHEN: Gọi hàm placeBid thật của BiddingService
             BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
 
             // 3. THEN: Kiểm tra giá mới được cập nhật đúng và trả về DTO như kỳ vọng
-            assertThat(actualResponse).isEqualTo(expectedResponse);
+            assertThat(actualResponse).isNotNull();
+            assertThat(actualResponse.getBidAmount()).isEqualTo(bidAmount);
             assertThat(sampleAuction.getCurrentPrice()).isEqualTo(bidAmount);
 
             // Xác minh các thao tác lưu dữ liệu được thực thi đúng 1 lần
-            then(bidValidator).should(times(1)).validateBid(sampleBidder, sampleAuction, Optional.empty(), requestDTO);
             then(auctionRepository).should(times(1)).save(sampleAuction);
-            then(bidRepository).should(times(1)).saveAll(proxyResult.bidsToSave());
-            then(bidResponseHelper).should(times(1)).buildResponse(sampleAuction, winningBid, false);
         }
 
         @Test
-        @DisplayName("Đặt thầu thành công cận giờ kết thúc - Kích hoạt Soft-Close Anti-sniping gia hạn thêm 3 phút")
-        void placeBid_Success_WithAntiSnipingExtension() {
-            // 1. GIVEN: Thời gian kết thúc nằm trong 3 phút cuối (chỉ còn 2 phút nữa)
+        @DisplayName("Đặt thầu thành công cận giờ kết thúc - Chế độ Hard-Close thời gian cứng không kéo dài thời gian kết thúc")
+        void placeBid_Success_HardCloseMode_NoEndTimeExtension() {
+            // 1. GIVEN: Thời gian kết thúc nằm cận giờ (chỉ còn 2 phút nữa)
             Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal bidAmount = BigDecimal.valueOf(150000);
@@ -216,28 +214,16 @@ class BiddingServiceTest {
 
             given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
-            given(bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auctionId))
-                    .willReturn(Optional.empty());
-
-            Bid winningBid = new Bid();
-            winningBid.setBidAmount(bidAmount);
-            ProxyBiddingResult proxyResult = new ProxyBiddingResult(List.of(winningBid), winningBid, bidAmount);
-
-            given(proxyBiddingEngineHelper.processProxyBidding(sampleAuction, sampleBidder, bidAmount, null))
-                    .willReturn(proxyResult);
-
-            BidResponseDTO expectedResponse = mock(BidResponseDTO.class);
-            given(bidResponseHelper.buildResponse(eq(sampleAuction), eq(winningBid), eq(true)))
-                    .willReturn(expectedResponse);
+            given(redisEngine.processBidAtomic(eq(auctionId), eq(bidderId), eq(bidAmount), eq(sampleAuction.getBidStep()), eq(sampleAuction.getCurrentPrice())))
+                    .willReturn(true);
 
             // 2. WHEN: Gọi hàm placeBid
             BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
 
-            // 3. THEN: Kiểm tra thời gian kết thúc đã tự động được cộng thêm 3 phút (Soft-Close)
-            assertThat(actualResponse).isEqualTo(expectedResponse);
-            assertThat(sampleAuction.getEndTime()).isAfter(originalEndTime); // Thời gian kết thúc mới phải lớn hơn mốc ban đầu
-
-            then(bidResponseHelper).should(times(1)).buildResponse(sampleAuction, winningBid, true);
+            // 3. THEN: Kiểm tra thời gian kết thúc giữ nguyên mốc ban đầu (Hard-Close)
+            assertThat(actualResponse).isNotNull();
+            assertThat(actualResponse.getBidAmount()).isEqualTo(bidAmount);
+            assertThat(sampleAuction.getEndTime()).isEqualTo(originalEndTime);
         }
     }
 
