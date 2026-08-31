@@ -13,6 +13,8 @@ public enum ErrorCode {
     UNAUTHORIZED_ACCESS(1002, "Bạn không có quyền thực hiện hành động này", HttpStatus.FORBIDDEN),
     USER_BANNED_FROM_BIDDING(1003, "Tài khoản của bạn đang bị cấm tham gia đấu giá do vi phạm bùng đơn quá 3 lần", HttpStatus.FORBIDDEN),
     UNAUTHENTICATED(1004, "Bạn cần đăng nhập để truy cập tài nguyên này (Token không hợp lệ hoặc đã hết hạn)", HttpStatus.UNAUTHORIZED),
+    EMAIL_ALREADY_EXISTS(1005, "Email này đã được sử dụng", HttpStatus.BAD_REQUEST),
+    USERNAME_ALREADY_EXISTS(1006, "Username này đã được sử dụng", HttpStatus.BAD_REQUEST),
 
     // ===== PRODUCT: 1100 - 1199 =====
     PRODUCT_NOT_FOUND(1101, "Sản phẩm không tồn tại", HttpStatus.NOT_FOUND),

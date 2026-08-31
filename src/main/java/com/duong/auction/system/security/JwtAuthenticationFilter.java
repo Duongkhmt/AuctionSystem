@@ -1,11 +1,13 @@
 package com.duong.auction.system.security;
 
+import com.duong.auction.system.config.SecurityConstants;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.security.authentication.UsernamePasswordAuthenticationToken;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UserDetails;
@@ -27,17 +29,28 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     private final JwtTokenProvider tokenProvider;
     private final CustomUserDetailsService customUserDetailsService;
+    private final StringRedisTemplate redisTemplate;
 
     @Override
     protected void doFilterInternal(HttpServletRequest request,
                                     HttpServletResponse response,
                                     FilterChain filterChain) throws ServletException, IOException {
         try {
+
+
             // 1. Trích xuất Bearer Token từ HTTP Header Authorization
             String jwt = getJwtFromRequest(request);
 
             // 2. Kiểm tra chuỗi Token có tồn tại và hợp lệ (chữ ký chuẩn, còn hạn 10 phút)
             if (StringUtils.hasText(jwt) && tokenProvider.validateToken(jwt)) {
+
+                // Kiểm tra Redis Blacklist
+                Boolean isBlacklisted = redisTemplate.hasKey("blacklist_token:" + jwt);
+                if (Boolean.TRUE.equals(isBlacklisted)) {
+                    log.warn("⚠️ Token này đã bị thu hồi do người dùng Đăng xuất (Blacklisted)!");
+                    filterChain.doFilter(request, response);
+                    return;
+                }
 
                 // Trích xuất Email từ JWT Token
                 String email = tokenProvider.getUsernameFromToken(jwt);
@@ -68,9 +81,9 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
 
     // Helper trích xuất chuỗi JWT bỏ đi tiền tố "Bearer "
     private String getJwtFromRequest(HttpServletRequest request) {
-        String bearerToken = request.getHeader("Authorization");
-        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith("Bearer ")) {
-            return bearerToken.substring(7); // Cắt bỏ 7 ký tự "Bearer " lấy chuỗi Token gốc
+        String bearerToken = request.getHeader(SecurityConstants.HEADER_AUTHORIZATION);
+        if (StringUtils.hasText(bearerToken) && bearerToken.startsWith(SecurityConstants.TOKEN_PREFIX)) {
+            return bearerToken.substring(SecurityConstants.TOKEN_PREFIX.length());
         }
         return null;
     }

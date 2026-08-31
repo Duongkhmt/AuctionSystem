@@ -5,6 +5,9 @@ import org.springframework.context.MessageSource;
 import org.springframework.context.i18n.LocaleContextHolder;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.authentication.DisabledException;
+import org.springframework.security.authentication.LockedException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
@@ -92,4 +95,31 @@ public class GlobalExceptionHandler {
 
         return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR).body(errorResponse);
     }
+
+    /**
+     *  Xử lý lỗi Đăng nhập sai Email hoặc Mật khẩu từ Spring Security (BadCredentialsException)
+     */
+    @ExceptionHandler(BadCredentialsException.class)
+    public ResponseEntity<ErrorResponse> handleBadCredentialsException(BadCredentialsException ex) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .code(ErrorCode.UNAUTHENTICATED.getCode())
+                .message("Email hoặc mật khẩu không chính xác!")
+                .status(HttpStatus.UNAUTHORIZED.value())
+                .build();
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED).body(errorResponse);
+    }
+
+    /**
+     * 🟢 Xử lý lỗi Tài khoản bị Khóa / Ban khi Đăng nhập (DisabledException & LockedException)
+     */
+    @ExceptionHandler({DisabledException.class, LockedException.class})
+    public ResponseEntity<ErrorResponse> handleDisabledException(Exception ex) {
+        ErrorResponse errorResponse = ErrorResponse.builder()
+                .code(ErrorCode.USER_BANNED_FROM_BIDDING.getCode())
+                .message(ErrorCode.USER_BANNED_FROM_BIDDING.getMessage())
+                .status(HttpStatus.FORBIDDEN.value())
+                .build();
+        return ResponseEntity.status(HttpStatus.FORBIDDEN).body(errorResponse);
+    }
+
 }
