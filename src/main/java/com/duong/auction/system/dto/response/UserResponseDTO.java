@@ -14,9 +14,6 @@ public class UserResponseDTO {
     // 🟢 Access Token (10 phút)
     private String accessToken;
 
-    // 🟢 Refresh Token (7 ngày)
-    private String refreshToken;
-
     // 🟢 Tên hiển thị người dùng (hiển thị trên UI Header)
     private String username;
 
