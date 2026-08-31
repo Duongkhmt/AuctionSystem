@@ -40,6 +40,12 @@
 - Cấu hình trong `application.properties`: `app.jwt.expiration-ms=600000` (10 Phút).
 - **Lý do thiết kế:** Đảm bảo mức độ an toàn tối cao. Nếu lỡ lộ Token, chuỗi JWT sẽ tự động biến thành "giấy lộn" sau 10 phút.
 
+### 2.3. Cơ Chế Cặp Token (Access Token 10 Phút & Refresh Token 7 Ngày)
+Để khắc phục rủi ro người dùng bị gián đoạn khi đang tham gia đấu giá dồn dập (UX):
+- **Access Token (10 Phút)**: Dùng để đính kèm vào Header `Authorization: Bearer <TOKEN>` cho mỗi Request.
+- **Refresh Token (7 Ngày)**: Được lưu an toàn dưới `HttpOnly Cookie` (chống XSS) hoặc lưu trong Redis (`refresh_token:<userId>`).
+- **Endpoint `/v1/auth/refresh`**: Phía Frontend Angular (HttpInterceptor) tự động phát hiện Access Token còn 1 phút nữa hết hạn ➔ Gọi ngầm endpoint này xin Access Token 10 phút mới mà **KHÔNG bắt người dùng phải đăng nhập lại**.
+
 ---
 
 ## 3. MÔ HÌNH PHÂN QUYỀN RBAC (USER_ROLE ENUM)
@@ -90,5 +96,12 @@ Hệ thống được thiết kế tối giản và linh hoạt theo đúng [Use
 
 ### 5.2. Chống Đòn Tấn Công Brute Force Mật Khẩu
 - Sử dụng `BCryptPasswordEncoder` mã hóa mật khẩu kèm Salt ngẫu nhiên + Adaptive Work Factor (Cost = 10).
+
+### 5.3. Cơ Chế Thu Hồi Token (Redis Token Blacklist) Khi Tài Khoản Bị BAN / Logout
+- **Rủi ro:** Vì JWT là Stateless, một Token 10 phút vẫn còn hạn sẽ tiếp tục đặt giá được ngay cả khi Admin vừa bấm BAN tài khoản đó 1 giây trước!
+- **Giải pháp tối ưu:**
+  1. Khi Admin bấm BAN tài khoản (`status = BANNED`) hoặc khi User bấm Logout: Backend ghi chuỗi Token đó vào **Redis Blacklist** (`blacklist_token:<token_hash>`) với `TTL` = thời gian còn lại của Token (ví dụ còn 8 phút thì TTL = 8 phút).
+  2. Trong `JwtAuthenticationFilter`: Đọc Redis kiểm tra xem Token có nằm trong Blacklist hay không. Nếu có ➔ Trả về lỗi 401 Unauthorized lập tức, vô hiệu hóa hoàn toàn Token 10 phút còn lại của tài khoản vừa bị BAN!
+
 
 

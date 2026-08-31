@@ -16,7 +16,7 @@ public class CustomUserDetailsService implements UserDetailsService {
 
     private final UserRepository userRepository;
 
-    // 🟢 1. Hàm chuẩn của Spring Security: Chỉ cho phép ĐĂNG NHẬP BẰNG EMAIL
+
     @Override
     @Transactional(readOnly = true)
     public UserDetails loadUserByUsername(String email) throws UsernameNotFoundException {
