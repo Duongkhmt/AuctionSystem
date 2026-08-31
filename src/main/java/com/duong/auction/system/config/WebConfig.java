@@ -1,12 +1,15 @@
 package com.duong.auction.system.config;
 
+
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.PropertyNamingStrategies;
+import com.fasterxml.jackson.databind.SerializationFeature;
 import org.springframework.context.MessageSource;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.context.support.ResourceBundleMessageSource;
 import org.springframework.web.servlet.LocaleResolver;
 import org.springframework.web.servlet.i18n.AcceptHeaderLocaleResolver;
-
 import java.util.List;
 import java.util.Locale;
 
@@ -14,10 +17,31 @@ import java.util.Locale;
 public class WebConfig {
 
     /**
-     * 1. Cấu hình LocaleResolver để tự động đọc HTTP Header Accept-Language từ Client.
-     * Ví dụ: Accept-Language: en -> Locale.ENGLISH
-     *        Accept-Language: vi -> Locale("vi")
+     * 🟢 Cấu hình ObjectMapper Bean tường minh dùng chung cho toàn bộ ứng dụng.
+     * Ép định dạng JSON trả về chuẩn SNAKE_CASE (user_id, created_at) và tự động đăng ký các module thời gian.
      */
+    @Bean
+    public ObjectMapper objectMapper() {
+        ObjectMapper mapper = new ObjectMapper();
+
+        // 🟢 Ép kiểu chuyển đổi tên thuộc tính Java (camelCase) sang JSON (snake_case)
+        mapper.setPropertyNamingStrategy(PropertyNamingStrategies.SNAKE_CASE);
+
+        // 🟢 Tự động phát hiện và đăng ký tất cả các module xử lý thời gian Java 8/21 (LocalDateTime, Instant)
+        mapper.findAndRegisterModules();
+
+        // 🟢 Tắt định dạng ngày tháng dạng số timestamp (đổi sang chuỗi ISO-8601 chuẩn)
+        mapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+
+        return mapper;
+    }
+
+
+    /**
+     * 🟢 Cấu hình LocaleResolver tự động phân tích HTTP Header Accept-Language từ Client gửi lên.
+     * Mặc định là Tiếng Việt ("vi"), hỗ trợ thêm Tiếng Anh ("en").
+     */
+
     @Bean
     public LocaleResolver localeResolver() {
         //Class có sẵn của Spring MVC giúp tự động phân tích (parse) Header này mỗi khi có Request đi vào ứng dụng

@@ -22,16 +22,18 @@ import java.util.Date;
 @Slf4j
 public class JwtTokenProvider {
 
+
+    // 🟢 Đọc Secret Key từ file application.properties
     @Value("${app.jwt.secret}")
     private String jwtSecret;
-
+    // 🟢 Đọc thời gian hết hạn từ application.properties (Mặc định 10 Phút = 600.000 ms)
     @Value("${app.jwt.expiration-ms}")
     private long jwtExpirationMs;
-
-    // 🟢 1. CACHE KEY TRONG RAM (Tránh re-parse byte array tốn CPU trên mỗi HTTP Request)
+    // 🟢 Cache Secret Key trong RAM tại @PostConstruct để tránh re-parse tốn CPU trên mỗi HTTP Request
     private Key cachedSecretKey;
-
-
+    /**
+     * 🟢 Khởi tạo Secret Key mã hóa chữ ký HMAC-SHA256 ngay sau khi Spring Inject giá trị jwtSecret.
+     */
     @PostConstruct
     public void init() {
         this.cachedSecretKey = Keys.hmacShaKeyFor(jwtSecret.getBytes(StandardCharsets.UTF_8));
@@ -52,6 +54,11 @@ public class JwtTokenProvider {
                 .compact();
     }
 
+    /**
+     * 🟢 Trích xuất EMAIL người dùng từ chuỗi JWT Token.
+     * @param token Chuỗi JWT Token gửi lên từ Client.
+     * @return Email của người dùng sở hữu Token.
+     */
     // 🟢 3. HÀM TRÍCH XUẤT EMAIL TỪ CHUỖI JWT TOKEN (Tối ưu dùng cachedSecretKey)
     public String getUsernameFromToken(String token) {
         Claims claims = Jwts.parserBuilder()
