@@ -30,9 +30,9 @@ public class BiddingConcurrencyFacade {
      * [ĐOẠN 1]: Bọc Khóa Phân Tán cho luồng Đặt Giá Cạnh Tranh (placeBid)
      * Ý nghĩa: Nhét công việc placeBid vào Hộp Callback Supplier và truyền qua hàm hạ tầng xử lý lock.
      */
-    public BidResponseDTO placeBidWithLock(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
+    public BidResponseDTO placeBidWithLock(Long auctionId, BidRequestDTO requestDTO) {
         return executeWithAuctionLock(auctionId, () ->
-                biddingService.placeBid(bidderId, auctionId, requestDTO)
+                biddingService.placeBid(auctionId, requestDTO)
         );
     }
 
@@ -40,9 +40,9 @@ public class BiddingConcurrencyFacade {
      * [ĐOẠN 2]: Bọc Khóa Phân Tán cho luồng Mua Ngay Giá Cố Định (executeBuyNow)
      * Ý nghĩa: Nhét công việc executeBuyNow vào Hộp Callback Supplier để xếp hàng tranh chìa khóa.
      */
-    public BidResponseDTO executeBuyNowWithLock(Long bidderId, Long auctionId) {
+    public BidResponseDTO executeBuyNowWithLock(Long auctionId) {
         return executeWithAuctionLock(auctionId, () ->
-                biddingService.executeBuyNow(bidderId, auctionId)
+                biddingService.executeBuyNow(auctionId)
         );
     }
 

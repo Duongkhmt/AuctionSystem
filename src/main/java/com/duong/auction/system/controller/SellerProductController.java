@@ -18,9 +18,10 @@ import java.util.List;
 
 /**
  * Controller quản lý các Endpoint thao tác bài đăng và phiên đấu giá của Người Bán (Seller).
+ * Tự động xác thực danh tính Người Bán qua JWT Token.
  */
 @RestController
-@RequestMapping("/v1/sellers/{sellerId}")
+@RequestMapping("/v1/sellers/me")
 @RequiredArgsConstructor
 public class SellerProductController {
 
@@ -30,81 +31,72 @@ public class SellerProductController {
     // =========================================================================
     // 1. NHÓM API SẢN PHẨM & PHIÊN ĐẤU GIÁ (PRODUCTS)
 
-
     // =========================================================================
-    // 1. API XEM DANH SÁCH SẢN PHẨM CÁ NHÂN CỦA NGƯỜI BÁN
+    // 1. API XEM DANH SÁCH SẢN PHẨM CÁ NHÂN CỦA NGƯỜI BÁN ĐANG ĐĂNG NHẬP
     @GetMapping("/products")
-    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts(@PathVariable Long sellerId) {
-        return ResponseEntity.ok(productService.getProductsBySellerId(sellerId));
+    public ResponseEntity<List<ProductResponseDTO>> getSellerProducts() {
+        return ResponseEntity.ok(productService.getProductsBySellerId());
     }
 
     // =========================================================================
     // 2. API NGƯỜI BÁN TẠO BÀI ĐĂNG SẢN PHẨM MỚI (CHỜ ADMIN DUYỆT)
     @PostMapping("/products")
     public ResponseEntity<ProductResponseDTO> createProduct(
-            @PathVariable Long sellerId,
             @Valid @ModelAttribute ProductRequestDTO requestDTO
     ) {
-        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createProduct(sellerId, requestDTO));
+        return ResponseEntity.status(HttpStatus.CREATED).body(productService.createProduct(requestDTO));
     }
 
     // =========================================================================
     // 3. API NGƯỜI BÁN CHỈNH SỬA SẢN PHẨM (KHI CHƯA CHẠY HOẶC CHƯA BẮT ĐẦU)
     @PutMapping("/products/{id}")
     public ResponseEntity<ProductResponseDTO> updateProduct(
-            @PathVariable Long sellerId,
             @PathVariable Long id,
             @Valid @ModelAttribute ProductUpdateRequestDTO requestDTO
     ) {
-        return ResponseEntity.ok(productService.updateProduct(sellerId, id, requestDTO));
+        return ResponseEntity.ok(productService.updateProduct(id, requestDTO));
     }
 
     // =========================================================================
     // 4. API NGƯỜI BÁN XÓA VĨNH VIỄN SẢN PHẨM (KHI CHƯA DIỄN RA)
     @DeleteMapping("/products/{id}")
-    public ResponseEntity<Void> deleteProduct(@PathVariable Long sellerId, @PathVariable Long id) {
-        productService.deleteProduct(sellerId, id);
+    public ResponseEntity<Void> deleteProduct(@PathVariable Long id) {
+        productService.deleteProduct(id);
         return ResponseEntity.noContent().build();
     }
-
 
     // =========================================================================
     // 5. API NGƯỜI BÁN CHỦ ĐỘNG HỦY PHIÊN BÀI ĐĂNG (KHI CHƯA CÓ AI BID)
     @PutMapping("/products/{id}/cancel")
-    public ResponseEntity<ProductResponseDTO> cancelAuction(@PathVariable Long sellerId, @PathVariable Long id) {
-        return ResponseEntity.ok(productService.cancelAuction(sellerId, id));
+    public ResponseEntity<ProductResponseDTO> cancelAuction(@PathVariable Long id) {
+        return ResponseEntity.ok(productService.cancelAuction(id));
     }
-
 
     // =========================================================================
     // 6. API NGƯỜI BÁN "ĐĂNG LẠI" (RELIST) SẢN PHẨM HẾT HẠN 30 NGÀY (EXPIRED)
     @PostMapping("/products/{auctionId}/relist")
-    public ResponseEntity<ProductResponseDTO> relist(@PathVariable Long sellerId, @PathVariable Long auctionId) {
-        return ResponseEntity.ok(productService.relistAuction(sellerId, auctionId));
+    public ResponseEntity<ProductResponseDTO> relist(@PathVariable Long auctionId) {
+        return ResponseEntity.ok(productService.relistAuction(auctionId));
     }
 
     // =========================================================================
     // 2. NHÓM API ĐƠN HÀNG HẬU ĐẤU GIÁ (ORDERS)
 
     // =========================================================================
-    // API 3: Người Bán xem danh sách đơn hàng đã bán
+    // API 3: Người Bán xem danh sách đơn hàng đã bán của chính mình
     @GetMapping("/orders")
     public ResponseEntity<List<SellerOrderResponseDTO>> getSellerOrders(
-            @PathVariable Long sellerId,
             @RequestParam(required = false) OrderStatus status
     ) {
-        return ResponseEntity.ok(orderService.getSellerOrders(sellerId, status));
+        return ResponseEntity.ok(orderService.getSellerOrders(status));
     }
-
 
     // API 4: Người Bán bấm nút xuất hàng (PAID -> SHIPPING)
     @PutMapping("/orders/{orderId}/ship")
     public ResponseEntity<SellerOrderResponseDTO> shipOrder(
-            @PathVariable Long sellerId,
             @PathVariable Long orderId,
             @Valid @RequestBody ShipOrderRequestDTO requestDTO
     ) {
-        return ResponseEntity.ok(orderService.shipOrder(orderId, sellerId, requestDTO));
+        return ResponseEntity.ok(orderService.shipOrder(orderId, requestDTO));
     }
-
 }

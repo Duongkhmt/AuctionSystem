@@ -7,6 +7,7 @@ import com.duong.auction.system.dto.response.SellerOrderResponseDTO;
 import com.duong.auction.system.dto.response.WonAuctionResponseDTO;
 import com.duong.auction.system.entity.Order;
 import com.duong.auction.system.entity.Payment;
+import com.duong.auction.system.entity.User;
 import com.duong.auction.system.enums.OrderStatus;
 import com.duong.auction.system.enums.PaymentStatus;
 import com.duong.auction.system.exception.ApplicationException;
@@ -36,27 +37,36 @@ public class OrderService {
     private final OrderMapper orderMapper;
 
 
-    // 1. NGƯỜI MUA TRUY VẤN DANH SÁCH SẢN PHẨM ĐÃ TRÚNG THẦU
-    @Transactional(readOnly = true)
-    public List<WonAuctionResponseDTO> getWonAuctions(Long bidderId) {
-        // 1. Kiểm tra sự tồn tại của Người Mua trong hệ thống
-        if (!userRepository.existsById(bidderId)) {
-            throw new ApplicationException(ErrorCode.USER_NOT_FOUND);
+    private User getAuthenticatedUser() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof com.duong.auction.system.security.UserCustomDetails userCustomDetails) {
+            return userCustomDetails.getUser();
         }
-        // 2. Truy vấn danh sách các đơn hàng trúng thầu mà buyer_id = bidderId (mới nhất xếp trên)
-        List<Order> orders = orderRepository.findByBuyer_IdOrderByCreatedAtDesc(bidderId);
-        // 3. Đưa danh sách Entity cho Helper đóng gói DTO kèm lấy ảnh đại diện Thumbnail trả về
+        String email = (auth != null) ? auth.getName() : null;
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    }
+
+    // 1. NGƯỜI MUA TRUY VẤN DANH SÁCH SẢN PHẨM ĐÃ TRÚNG THẦU CỦA CHÍNH MÌNH
+    @Transactional(readOnly = true)
+    public List<WonAuctionResponseDTO> getWonAuctions() {
+        // 1. Lấy thông tin Người Mua đang đăng nhập từ SecurityContext
+        User buyer = getAuthenticatedUser();
+        // 2. Truy vấn danh sách các đơn hàng trúng thầu mà buyer_id = buyer.getId()
+        List<Order> orders = orderRepository.findByBuyer_IdOrderByCreatedAtDesc(buyer.getId());
+        // 3. Đưa danh sách Entity cho Helper đóng gói DTO
         return orderResponseHelper.buildWonAuctionDTOList(orders);
     }
 
     // 2. NGƯỜI MUA CHỐT ĐỊA CHỈ & THANH TOÁN (CHECKOUT)
     @Transactional
-    public CheckoutResponseDTO checkout(Long orderId, Long buyerId, CheckoutRequestDTO requestDTO) {
+    public CheckoutResponseDTO checkout(Long orderId, CheckoutRequestDTO requestDTO) {
+        User buyer = getAuthenticatedUser();
         // 1. Tìm thông tin đơn hàng theo orderId
         Order order = orderRepository.findById(orderId).orElseThrow(() -> new ApplicationException(ErrorCode.ORDER_NOT_FOUND));
 
-        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc chính chủ Người Mua và status đang là UNPAID
-        orderValidator.validateCheckout(buyerId, order);
+        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc chính chủ Người Mua đang đăng nhập
+        orderValidator.validateCheckout(buyer.getId(), order);
 
         // 3. Cập nhật thông tin nhận hàng (địa chỉ, SĐT) và chuyển trạng thái đơn sang PAID
         order.setShippingAddress(requestDTO.getShippingAddress());
@@ -80,31 +90,28 @@ public class OrderService {
         return orderResponseHelper.buildCheckoutDTO(order, transactionCode);
     }
 
-    // API 3: NGƯỜI BÁN (SELLER) TRUY VẤN DANH SÁCH ĐƠN HÀNG BÁN ĐƯỢC
+    // API 3: NGƯỜI BÁN (SELLER) TRUY VẤN DANH SÁCH ĐƠN HÀNG BÁN ĐƯỢC CỦA CHÍNH MÌNH
     // =========================================================================
     @Transactional(readOnly = true)
-    public List<SellerOrderResponseDTO> getSellerOrders(Long sellerId, OrderStatus status) {
-        // 1. Kiểm tra sự tồn tại của Người Bán trong hệ thống
-        if (!userRepository.existsById(sellerId)) {
-            throw new ApplicationException(ErrorCode.USER_NOT_FOUND);
-        }
-        // 2. Lấy danh sách đơn hàng do sellerId sở hữu (Hỗ trợ lọc tùy chọn theo tham số status)
+    public List<SellerOrderResponseDTO> getSellerOrders(OrderStatus status) {
+        User seller = getAuthenticatedUser();
+        // Lấy danh sách đơn hàng do Seller đang đăng nhập sở hữu
         List<Order> orders = (status != null)
-                ? orderRepository.findBySeller_IdAndStatusOrderByCreatedAtDesc(sellerId, status)
-                : orderRepository.findBySeller_IdOrderByCreatedAtDesc(sellerId);
-        // 3. Đưa danh sách Entity cho Helper đóng gói sang SellerOrderResponseDTO
+                ? orderRepository.findBySeller_IdAndStatusOrderByCreatedAtDesc(seller.getId(), status)
+                : orderRepository.findBySeller_IdOrderByCreatedAtDesc(seller.getId());
         return orderResponseHelper.buildSellerOrderDTOList(orders);
     }
 
     // API 4: NGƯỜI BÁN BẤM NÚT XUẤT HÀNG / GIAO HÀNG (PAID -> SHIPPING)
     // =========================================================================
     @Transactional
-    public SellerOrderResponseDTO shipOrder(Long orderId, Long sellerId, ShipOrderRequestDTO requestDTO) {
+    public SellerOrderResponseDTO shipOrder(Long orderId, ShipOrderRequestDTO requestDTO) {
+        User seller = getAuthenticatedUser();
         // 1. Tìm thông tin đơn hàng theo orderId
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.ORDER_NOT_FOUND));
-        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc chính chủ Người Bán và status BẮT BUỘC phải là PAID
-        orderValidator.validateShipOrder(sellerId, order);
+        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc chính chủ Người Bán đang đăng nhập
+        orderValidator.validateShipOrder(seller.getId(), order);
         // 3. Cập nhật tên đơn vị vận chuyển (courierName) và mã vận đơn (trackingNumber) do Seller nhập
         order.setCourierName(requestDTO.getCourierName());
         order.setTrackingNumber(requestDTO.getTrackingNumber());
@@ -119,12 +126,13 @@ public class OrderService {
     // API 5: NGƯỜI MUA XÁC NHẬN "ĐÃ NHẬN HÀNG THÀNH CÔNG" (SHIPPING -> COMPLETED)
     // =========================================================================
     @Transactional
-    public WonAuctionResponseDTO confirmReceived(Long orderId, Long buyerId) {
+    public WonAuctionResponseDTO confirmReceived(Long orderId) {
+        User buyer = getAuthenticatedUser();
         // 1. Tìm thông tin đơn hàng theo orderId
         Order order = orderRepository.findById(orderId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.ORDER_NOT_FOUND));
-        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc đúng Người Mua và status BẮT BUỘC phải là SHIPPING
-        orderValidator.validateConfirmReceived(buyerId, order);
+        // 2. Gọi OrderValidator kiểm tra quy tắc: Bắt buộc đúng Người Mua đang đăng nhập
+        orderValidator.validateConfirmReceived(buyer.getId(), order);
         // 3. Đổi trạng thái đơn sang COMPLETED (Hoàn tất chu trình giao dịch & Giải ngân cho Seller)
         order.setStatus(OrderStatus.COMPLETED);
         orderRepository.save(order);

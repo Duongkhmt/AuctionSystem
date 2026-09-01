@@ -51,15 +51,24 @@ public class ProductService {
     private final ProductAuctionLookupHelper productAuctionLookupHelper;
     private final Clock clock;
 
+    private User getAuthenticatedUser() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof com.duong.auction.system.security.UserCustomDetails userCustomDetails) {
+            return userCustomDetails.getUser();
+        }
+        String email = (auth != null) ? auth.getName() : null;
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    }
+
     // =========================================================================
     // 1. NGƯỜI BÁN (SELLER) TẠO SẢN PHẨM MỚI KÈM CẤU HÌNH ĐẤU GIÁ
     // =========================================================================
 
     @Transactional
-    public ProductResponseDTO createProduct(Long sellerId, ProductRequestDTO requestDTO) {
-        // 1. Kiểm tra tồn tại của Người Bán (Seller)
-        User seller = userRepository.findById(sellerId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    public ProductResponseDTO createProduct(ProductRequestDTO requestDTO) {
+        // 1. Lấy thông tin chính chủ Người Bán đang đăng nhập từ SecurityContext
+        User seller = getAuthenticatedUser();
 
         // 2. Kiểm tra Danh Mục sản phẩm (Category) tồn tại và có đang hoạt động (isActive) không
         Category category = categoryRepository.findById(requestDTO.getCategoryId())
@@ -114,13 +123,11 @@ public class ProductService {
     // 2. TRUY VẤN DANH SÁCH VÀ CHI TIẾT SẢN PHẨM
     // =========================================================================
 
-    // Lấy danh sách sản phẩm do chính Người Bán đăng (Sắp xếp theo thứ tự ưu tiên UX)
+    // Lấy danh sách sản phẩm do chính Người Bán đang đăng nhập tạo ra
     @Transactional(readOnly = true)
-    public List<ProductResponseDTO> getProductsBySellerId(Long sellerId) {
-        if (!userRepository.existsById(sellerId)) {
-            throw new ApplicationException(ErrorCode.USER_NOT_FOUND);
-        }
-        List<Product> products = productRepository.findProductsBySellerIdSorted(sellerId);
+    public List<ProductResponseDTO> getProductsBySellerId() {
+        User seller = getAuthenticatedUser();
+        List<Product> products = productRepository.findProductsBySellerIdSorted(seller.getId());
         return productResponseHelper.buildAll(products);
     }
 
@@ -145,9 +152,10 @@ public class ProductService {
     // =========================================================================
     @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
-    public ProductResponseDTO updateProduct(Long sellerId, Long productId, ProductUpdateRequestDTO requestDTO) {
-        // 1. Kiểm tra sản phẩm tồn tại và chính chủ Người Bán
-        Product product = findProductAndValidatePermission(sellerId, productId);
+    public ProductResponseDTO updateProduct(Long productId, ProductUpdateRequestDTO requestDTO) {
+        // 1. Kiểm tra sản phẩm tồn tại và chính chủ Người Bán đang đăng nhập
+        User seller = getAuthenticatedUser();
+        Product product = findProductAndValidatePermission(seller.getId(), productId);
         Auction auction = findAuctionAndValidateStatus(productId);
 
         // 2. Cập nhật Category (nếu thay đổi) và thông tin cơ bản của Product
@@ -296,9 +304,10 @@ public class ProductService {
 
     // Người bán XÓA vĩnh viễn sản phẩm (Chỉ khi phiên chưa diễn ra hoặc chưa kết thúc thành công)
     @Transactional
-    public void deleteProduct(Long sellerId, Long productId) {
-        // 1. Kiểm tra chính chủ Người Bán
-        Product product = findProductAndValidatePermission(sellerId, productId);
+    public void deleteProduct(Long productId) {
+        // 1. Kiểm tra chính chủ Người Bán đang đăng nhập
+        User seller = getAuthenticatedUser();
+        Product product = findProductAndValidatePermission(seller.getId(), productId);
         findAuctionAndValidateStatusForDelete(productId);
 
         // 2. Thu thập tất cả publicId ảnh để dọn dẹp trên Cloudinary
@@ -328,9 +337,10 @@ public class ProductService {
     // Người bán CHỦ ĐỘNG HỦY bài đăng (Chỉ khi chưa có ai đặt giá)
     @CacheEvict(value = "auctions", key = "#productId")
     @Transactional
-    public ProductResponseDTO cancelAuction(Long sellerId, Long productId) {
+    public ProductResponseDTO cancelAuction(Long productId) {
         // 1. Kiểm tra chính chủ và trạng thái hợp lệ
-        Product product = findProductAndValidatePermission(sellerId, productId);
+        User seller = getAuthenticatedUser();
+        Product product = findProductAndValidatePermission(seller.getId(), productId);
         Auction auction = findAuctionAndValidateStatus(productId);
 
         // 2. Chuyển trạng thái phiên sang CANCELLED
@@ -346,13 +356,14 @@ public class ProductService {
     // =========================================================================
 
     @Transactional
-    public ProductResponseDTO relistAuction(Long sellerId, Long auctionId) {
+    public ProductResponseDTO relistAuction(Long auctionId) {
+        User seller = getAuthenticatedUser();
         // 1. Tìm phiên đấu giá bị hết hạn theo auctionId
         Auction auction = auctionRepository.findById(auctionId)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.AUCTION_NOT_FOUND));
 
         // 2. Validate quy tắc Đăng lại (bắt buộc chính chủ Seller và trạng thái phiên phải là EXPIRED)
-        auctionValidator.validateRelist(sellerId, auction);
+        auctionValidator.validateRelist(seller.getId(), auction);
 
         // 3. Khôi phục trạng thái RUNNING công khai và reset 30 ngày hiển thị mới (startTime = NOW(), endTime = NOW() + 30 days)
         LocalDateTime now = LocalDateTime.now(clock);

@@ -13,9 +13,10 @@ import java.util.List;
 
 /**
  * Controller quản lý tất cả các Endpoint cổng cá nhân của Người Mua (Bidder Portal).
+ * Tự động xác thực danh tính Người Mua qua JWT Token.
  */
 @RestController
-@RequestMapping("/v1/bidders/{bidderId}")
+@RequestMapping("/v1/bidders/me")
 @RequiredArgsConstructor
 public class BidderController {
 
@@ -23,28 +24,24 @@ public class BidderController {
 
     // 1. API TRUY VẤN DANH SÁCH SẢN PHẨM ĐẤU GIÁ THẮNG CUỘC CỦA TÔI
     @GetMapping("/won-auctions")
-    public ResponseEntity<List<WonAuctionResponseDTO>> getWonAuctions(
-            @PathVariable Long bidderId
-    ) {
-        return ResponseEntity.ok(orderService.getWonAuctions(bidderId));
+    public ResponseEntity<List<WonAuctionResponseDTO>> getWonAuctions() {
+        return ResponseEntity.ok(orderService.getWonAuctions());
     }
 
     // 2. API NGƯỜI MUA ĐIỀN ĐỊA CHỈ & THANH TOÁN ĐƠN HÀNG (CHECKOUT)
     @PostMapping("/orders/{orderId}/checkout")
     public ResponseEntity<CheckoutResponseDTO> checkout(
-            @PathVariable Long bidderId,
             @PathVariable Long orderId,
             @Valid @RequestBody CheckoutRequestDTO requestDTO
     ) {
-        return ResponseEntity.ok(orderService.checkout(orderId, bidderId, requestDTO));
+        return ResponseEntity.ok(orderService.checkout(orderId, requestDTO));
     }
 
     // 3: API NGƯỜI MUA XÁC NHẬN "ĐÃ NHẬN HÀNG THÀNH CÔNG" (CONFIRM RECEIVED)
     @PutMapping("/orders/{orderId}/confirm-received")
     public ResponseEntity<WonAuctionResponseDTO> confirmReceived(
-            @PathVariable Long bidderId,
             @PathVariable Long orderId
     ) {
-        return ResponseEntity.ok(orderService.confirmReceived(orderId, bidderId));
+        return ResponseEntity.ok(orderService.confirmReceived(orderId));
     }
 }

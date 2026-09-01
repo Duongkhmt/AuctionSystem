@@ -51,16 +51,26 @@ public class BiddingService {
     private final BidResponseHelper bidResponseHelper;
     private final RedisAtomicBiddingEngine redisEngine;
 
+    private User getAuthenticatedUser() {
+        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof com.duong.auction.system.security.UserCustomDetails userCustomDetails) {
+            return userCustomDetails.getUser();
+        }
+        String email = (auth != null) ? auth.getName() : null;
+        return userRepository.findByEmail(email)
+                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    }
+
     // =========================================================================
     // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS ATOMIC LUA SCRIPT (ĐƠN GIẢN & TỐI ƯU SIÊU TỐC)
     // =========================================================================
     @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
     @CacheEvict(value = "bid_history", key = "#auctionId")
     @Transactional
-    public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requestDTO) {
-        // 1. Kiểm tra thông tin người đặt giá và phiên đấu giá
-        User bidder = userRepository.findById(bidderId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    public BidResponseDTO placeBid(Long auctionId, BidRequestDTO requestDTO) {
+        // 1. Lấy thông tin người đặt giá đang đăng nhập từ SecurityContext
+        User bidder = getAuthenticatedUser();
+        Long bidderId = bidder.getId();
 
         Auction auction = auctionRepository.findById(auctionId)
                 .or(() -> auctionRepository.findByProduct_Id(auctionId))
@@ -125,10 +135,9 @@ public class BiddingService {
     // Khi mua ngay thành công -> Tự động xé bỏ cả cache lịch sử bid lẫn cache chi tiết sản phẩm!
     @CacheEvict(value = {"bid_history", "auctions"}, key = "#auctionId")
     @Transactional
-    public BidResponseDTO executeBuyNow(Long bidderId, Long auctionId) {
-        // 1. Tìm thông tin Người Mua trong hệ thống
-        User bidder = userRepository.findById(bidderId)
-                .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+    public BidResponseDTO executeBuyNow(Long auctionId) {
+        // 1. Lấy thông tin Người Mua đang đăng nhập từ SecurityContext
+        User bidder = getAuthenticatedUser();
 
         // 2. Tìm phiên đấu giá Mua Ngay
         Auction auction = auctionRepository.findById(auctionId)
