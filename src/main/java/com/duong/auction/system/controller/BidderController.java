@@ -16,7 +16,7 @@ import java.util.List;
  * Tự động xác thực danh tính Người Mua qua JWT Token.
  */
 @RestController
-@RequestMapping("/v1/bidders/me")
+@RequestMapping({"/v1/bidders/me", "/v1/bidders/{bidderId}"})
 @RequiredArgsConstructor
 public class BidderController {
 

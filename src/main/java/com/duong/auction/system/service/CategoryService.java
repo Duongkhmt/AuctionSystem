@@ -4,7 +4,6 @@ import com.duong.auction.system.dto.response.CategoryResponseDTO;
 import com.duong.auction.system.entity.Category;
 import com.duong.auction.system.repository.CategoryRepository;
 import lombok.RequiredArgsConstructor;
-import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -17,10 +16,9 @@ public class CategoryService {
 
     private final CategoryRepository categoryRepository;
 
-    @Cacheable(value = "categories", key = "'all'")
     public List<CategoryResponseDTO> getAllCategories() {
         return categoryRepository.findAll().stream()
-                .filter(Category::isActive) // <--- Đã sửa ở đây
+                .filter(Category::isActive)
                 .map(cat -> CategoryResponseDTO.builder()
                         .id(cat.getId())
                         .parentId(cat.getParentId())

@@ -78,6 +78,7 @@ public class GlobalExceptionHandler {
      */
     @ExceptionHandler(Exception.class)
     public ResponseEntity<ErrorResponse> handleGenericException(Exception ex) {
+        ex.printStackTrace();
         Locale locale = LocaleContextHolder.getLocale();
 
         String localizedMessage = messageSource.getMessage(
