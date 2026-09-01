@@ -2,10 +2,13 @@ package com.duong.auction.system.controller;
 
 import com.duong.auction.system.dto.request.CategoryRequestDTO;
 import com.duong.auction.system.dto.request.ProductRejectRequestDTO;
+import com.duong.auction.system.dto.request.UserStatusUpdateRequestDTO;
+import com.duong.auction.system.dto.response.AdminUserResponseDTO;
 import com.duong.auction.system.dto.response.CategoryResponseDTO;
 import com.duong.auction.system.dto.response.ProductResponseDTO;
 import com.duong.auction.system.service.CategoryService;
 import com.duong.auction.system.service.ProductService;
+import com.duong.auction.system.service.UserService;
 import jakarta.validation.Valid;
 import lombok.RequiredArgsConstructor;
 import org.springframework.http.HttpStatus;
@@ -24,7 +27,7 @@ public class AdminProductController {
 
     private final ProductService productService;
     private final CategoryService categoryService;
-
+    private final UserService userService;
 
 
     // =========================================================================
@@ -109,5 +112,28 @@ public class AdminProductController {
     public ResponseEntity<Void> deleteCategory(@PathVariable Long id) {
         categoryService.deleteCategory(id);
         return ResponseEntity.noContent().build();
+    }
+
+    // =========================================================================
+    // 3. NHÓM API QUẢN LÝ TÀI KHOẢN NGƯỜI DÙNG (USER MANAGEMENT)
+    // =========================================================================
+    /**
+     * API 3.1: Admin xem danh sách tất cả các tài khoản người dùng trong hệ thống.
+     * Endpoint: GET /v1/admin/users
+     */
+    @GetMapping("/users")
+    public ResponseEntity<List<AdminUserResponseDTO>> getAllUsers() {
+        return ResponseEntity.ok(userService.getAllUsers());
+    }
+    /**
+     * API 3.2: Admin Khóa hoặc Mở Khóa tài khoản người dùng (ACTIVE, BANNED, LOCKED).
+     * Endpoint: PUT /v1/admin/users/{id}/status
+     */
+    @PutMapping("/users/{id}/status")
+    public ResponseEntity<AdminUserResponseDTO> updateUserStatus(
+            @PathVariable Long id,
+            @Valid @RequestBody UserStatusUpdateRequestDTO requestDTO
+    ) {
+        return ResponseEntity.ok(userService.updateUserStatus(id, requestDTO));
     }
 }

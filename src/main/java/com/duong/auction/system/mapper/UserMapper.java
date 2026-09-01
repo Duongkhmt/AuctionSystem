@@ -1,10 +1,13 @@
 package com.duong.auction.system.mapper;
 
 import com.duong.auction.system.dto.request.RegisterRequestDTO;
+import com.duong.auction.system.dto.response.AdminUserResponseDTO;
 import com.duong.auction.system.dto.response.UserResponseDTO;
 import com.duong.auction.system.entity.User;
 import org.mapstruct.Mapper;
 import org.mapstruct.Mapping;
+
+import java.util.List;
 
 /**
  * Mapper chuyển đổi giữa Entity User và các DTOs bằng MapStruct.
@@ -35,4 +38,13 @@ public interface UserMapper {
     @Mapping(target = "username", source = "user.username")
     @Mapping(target = "role", source = "user.role")
     UserResponseDTO toUserResponseDTO(User user, String accessToken, String refreshToken);
+
+    /**
+     * 🟢 MỚI THÊM: Chuyển đổi từ User Entity sang AdminUserResponseDTO.
+     */
+    AdminUserResponseDTO toAdminUserResponseDTO(User user);
+    /**
+     * 🟢 MỚI THÊM: Chuyển đổi danh sách User Entity sang danh sách AdminUserResponseDTO.
+     */
+    List<AdminUserResponseDTO> toAdminUserResponseDTOList(List<User> users);
 }
