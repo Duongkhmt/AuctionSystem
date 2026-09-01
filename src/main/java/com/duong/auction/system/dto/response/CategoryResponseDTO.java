@@ -19,6 +19,4 @@ public class CategoryResponseDTO implements Serializable {
     private Long parentId;
     private String name;
     private boolean active;
-    private boolean requiresVerification;
-    private boolean requiresDeposit;
 }
