@@ -77,15 +77,54 @@ Hệ thống được thiết kế tối giản và linh hoạt theo đúng [Use
 | 3 | `CustomUserDetailsService` | `security/CustomUserDetailsService.java` | Truy vấn `User` theo Email từ DB, tái sử dụng `ErrorCode.USER_NOT_FOUND` |
 | 4 | `JwtTokenProvider` | `security/JwtTokenProvider.java` | Sinh Token 10 phút, Giải mã Email và Validate chữ ký HMAC-SHA256 |
 | 5 | `JwtAuthenticationFilter` | `security/JwtAuthenticationFilter.java` | Custom Filter kế thừa `OncePerRequestFilter` nạp Authentication |
-| 6 | `JwtAuthenticationEntryPoint` | `security/JwtAuthenticationEntryPoint.java` | Trả về JSON HTTP 401 Unauthorized khi thiếu/hết hạn Token |
-| 7 | `CustomAccessDeniedHandler` | `security/CustomAccessDeniedHandler.java` | Trả về JSON HTTP 403 Forbidden khi thiếu quyền Role |
-| 8 | `SecurityConfig` | `config/SecurityConfig.java` | Lắp ráp chuỗi Filter, bật BCrypt, cấu hình phân chia Route RBAC |
+## 4. TÍCH HỢP TỰ ĐỘNG XÁC THỰC VÀ BẢO BẢO NGUYÊN TẮC RESTFUL (/me)
+
+Hệ thống đã hoàn tất refactor 100% các Controller tính năng để triệt tiêu hoàn toàn lỗ hổng bảo mật BOLA / IDOR:
+
+### 4.1. Seller Studio (`/v1/sellers/me`)
+- **`GET /v1/sellers/me/products`**: Truy vấn danh sách sản phẩm do chính Người Bán đang đăng nhập tạo ra.
+- **`POST /v1/sellers/me/products`**: Đăng bài bán sản phẩm mới (Tự động gán chính chủ Seller).
+- **`PUT /v1/sellers/me/products/{id}`**: Sửa bài đăng chính chủ.
+- **`DELETE /v1/sellers/me/products/{id}`**: Xóa bài đăng chính chủ + dọn dẹp ảnh Cloudinary.
+- **`PUT /v1/sellers/me/products/{id}/cancel`**: Hủy bài đăng chính chủ khi chưa có bid.
+- **`POST /v1/sellers/me/products/{auctionId}/relist`**: Đăng lại phiên hết hạn chính chủ.
+- **`GET /v1/sellers/me/orders`**: Xem danh sách đơn bán của chính mình.
+- **`PUT /v1/sellers/me/orders/{orderId}/ship`**: Điền mã vận đơn và xuất hàng chính chủ.
+
+### 4.2. Bidder Portal (`/v1/bidders/me`)
+- **`GET /v1/bidders/me/won-auctions`**: Lấy danh sách sản phẩm trúng thầu của chính Người Mua đang đăng nhập.
+- **`POST /v1/bidders/me/orders/{orderId}/checkout`**: Thanh toán và chốt địa chỉ nhận hàng chính chủ.
+- **`PUT /v1/bidders/me/orders/{orderId}/confirm-received`**: Xác nhận đã nhận được hàng chính chủ.
+
+### 4.3. Auction Bidding Engine (`/v1/auctions/{auctionId}/bids`)
+- **`POST /v1/auctions/{auctionId}/bids`**: Đặt giá cạnh tranh (Bỏ tham số `bidderId`, tự trích xuất chính chủ Bidder từ Token).
+- **`POST /v1/auctions/{auctionId}/bids/buy-now`**: Mua ngay giá cố định (Bọc Redisson Lock).
 
 ---
 
-## 5. PHÒNG CHỐNG LỖ HỔNG BẢO MẬT OWASP TOP 10
+## 5. TỐI ƯU HÓA TỐC ĐỘ RÚT USER TRỰC TIẾP TỪ RAM (0ms SQL QUERY)
 
-### 5.1. BOLA / IDOR (Broken Object Level Authorization)
+Trong các Service (`ProductService`, `BiddingService`, `OrderService`), phương thức `getAuthenticatedUser()` được tối ưu hóa như sau:
+
+```java
+private User getAuthenticatedUser() {
+    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+    if (auth != null && auth.getPrincipal() instanceof UserCustomDetails userCustomDetails) {
+        return userCustomDetails.getUser();
+    }
+    String email = (auth != null) ? auth.getName() : null;
+    return userRepository.findByEmail(email)
+            .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
+}
+```
+
+👉 **Lợi ích:** Trích xuất đối tượng `User` trực tiếp từ `UserCustomDetails` đã nạp trong RAM của `SecurityContextHolder` ➔ **Giảm bớt 100% các câu truy vấn SQL dư thừa (`SELECT * FROM users`) mỗi khi gọi API!**
+
+---
+
+## 6. PHÒNG CHỐNG LỖ HỔNG BẢO MẬT OWASP TOP 10
+
+### 6.1. BOLA / IDOR (Broken Object Level Authorization)
 - **Rủi ro:** `USER A` đã đăng nhập cố tình sửa `sellerId` trên URL để xem hoặc hủy đơn hàng của `USER B`: `GET /v1/sellers/999/orders`.
 - **Giải pháp:** Sử dụng `@EnableMethodSecurity` và gắn `@PreAuthorize` tại Controller/Service:
   ```java

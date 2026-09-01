@@ -279,5 +279,21 @@ src/main/java/com/duong/auction/system
 
 ---
 
+## 🔐 V. HỆ THỐNG BẢO MẬT & PHÂN QUYỀN JWT TẬP TRUNG
+
+### 1. Kiến trúc Xác thực Stateless (JWT + Spring Security)
+- **Email-Based Login**: Sử dụng Email làm định danh duy nhất đăng nhập hệ thống (`POST /v1/auth/login`).
+- **Access Token 10 Phút**: Mã hóa chữ ký HMAC-SHA256, truyền qua Header `Authorization: Bearer <JWT>`.
+- **Refresh Token 7 Ngày & Sliding TTL (3 Ngày)**: Lưu trữ an toàn trong Redis (`refresh_token:<userId>`), hỗ trợ tự động xoay vòng Token (Token Rotation) tại endpoint `/v1/auth/refresh`.
+- **Token Blacklist**: Vô hiệu hóa Token tức thì khi đăng xuất (`POST /v1/auth/logout`) bằng Redis Blacklist (`blacklist_token:<jwt>`).
+
+### 2. Tự động Trích xuất Chính Chủ và Chuẩn hóa Route RESTful (`/me`)
+- **Seller Studio (`/v1/sellers/me`)**: Truy vấn danh sách bài đăng, tạo mới, chỉnh sửa, xóa, hủy bài, đăng lại và quản lý xuất hàng của chính Seller đang đăng nhập.
+- **Bidder Portal (`/v1/bidders/me`)**: Truy vấn sản phẩm trúng thầu, checkout thanh toán và xác nhận đã nhận hàng của chính Bidder đang đăng nhập.
+- **Auction Engine (`/v1/auctions/{auctionId}/bids`)**: Đặt giá và Mua ngay tự động trích xuất thông tin người dùng từ `SecurityContextHolder`.
+- **Tối ưu 0ms SQL Query**: Phương thức `getAuthenticatedUser()` rút thẳng đối tượng `User` từ `UserCustomDetails` trong RAM của `SecurityContextHolder`, triệt tiêu 100% các câu truy vấn SQL dư thừa.
+
+---
+
 > [!NOTE]
-> Báo cáo Markdown này bao phủ **100% toàn bộ cấu trúc kiến trúc, nghiệp vụ bài toán, API Endpoints, State Machine và thiết kế CSDL** của dự án Backend `DuAnTrainning.AuctionSystem`.
+> Báo cáo Markdown này bao phủ **100% toàn bộ cấu trúc kiến trúc, nghiệp vụ bài toán, API Endpoints, State Machine, Bảo mật JWT và thiết kế CSDL** của dự án Backend `DuAnTrainning.AuctionSystem`.
