@@ -9,6 +9,8 @@
 | 1     | Xem danh sách bài đăng chờ kiểm duyệt | Quản trị viên (Admin) | Rà soát toàn bộ sản phẩm mới đăng trước khi cho phép xuất bản               |
 | 2     | Phê duyệt xuất bản bài đăng (Approve) | Quản trị viên (Admin) | Xác nhận sản phẩm hợp lệ và kích hoạt phiên đấu giá lên sàn                 |
 | 3     | Từ chối xuất bản bài đăng (Reject)    | Quản trị viên (Admin) | Loại bỏ các bài đăng vi phạm chính sách và gửi phản hồi lý do cho người bán |
+| 4     | Quản lý Danh mục sản phẩm (CRUD)      | Quản trị viên (Admin) | Xem tất cả danh mục, tạo mới, chỉnh sửa và ẩn/xóa danh mục                  |
+| 5     | Quản lý Tài khoản người dùng (Status) | Quản trị viên (Admin) | Xem danh sách người dùng hệ thống, Khóa/Mở khóa tài khoản                   |
 
 ---
 
@@ -123,3 +125,24 @@ Quản trị viên khi phát hiện bài đăng không đạt yêu cầu và ch�
 **Liên quan tới**  
 - [FUNCTIONAL-SPEC-SELLER.md](./FUNCTIONAL-SPEC-SELLER.md#xem-danh-sach-san-pham-ca-nhan)
 - [SYSTEM-BEHAVIOR.md](./SYSTEM-BEHAVIOR.md#vong-doi-trang-thai-san-pham-va-phien-dau-gia)
+
+---
+
+### Quản lý Danh mục sản phẩm (CRUD)
+
+**Bài toán kinh doanh**  
+Sàn đấu giá cần khả năng linh hoạt mở rộng hoặc ẩn bớt các ngành hàng theo từng thời điểm kinh doanh mà không ảnh hưởng tới dữ liệu cũ.
+
+**Mục tiêu**  
+Cung cấp bộ API `/v1/admin/categories` cho phép Admin xem danh sách tất cả danh mục (bao gồm bị ẩn), tạo danh mục mới (`POST`), chỉnh sửa tên/cha (`PUT`) và ẩn danh mục (`DELETE` soft-delete).
+
+---
+
+### Quản lý Tài khoản người dùng (Status)
+
+**Bài toán kinh doanh**  
+Đối với người dùng cố tình vi phạm quy chế sàn hoặc gây rủi ro an ninh, Admin cần công cụ kiểm soát danh sách tài khoản và chủ động can thiệp Khóa (`LOCKED`/`BANNED`) hoặc Mở khóa (`ACTIVE`) tài khoản.
+
+**Mục tiêu**  
+Cung cấp bộ API `/v1/admin/users` hỗ trợ xem danh sách toàn bộ người dùng (`GET`) và cập nhật trạng thái tài khoản (`PUT /v1/admin/users/{id}/status`).
+
