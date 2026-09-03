@@ -1,8 +1,8 @@
-# 📖 CẨM NANG TOÀN DIỆN: GIẢI THÍCH CHI TIẾT KIẾN TRÚC KAFKA & CÁC BÀI TOÁN XỬ LÝ LỖI TRONG DỰ ÁN
+#  CẨM NANG TOÀN DIỆN: GIẢI THÍCH CHI TIẾT KIẾN TRÚC KAFKA & CÁC BÀI TOÁN XỬ LÝ LỖI TRONG DỰ ÁN
 
 ---
 
-# 🔴 1. TẠI SAO DỰ ÁN LẠI CẦN APACHE KAFKA? (VẤN ĐỀ GỐC)
+#  1. TẠI SAO DỰ ÁN LẠI CẦN APACHE KAFKA? (VẤN ĐỀ GỐC)
 
 Trong hệ thống Đấu Giá `AuctionSystem`, **`AUCTION_ENDED` (Phiên Đấu Giá Kết Thúc)** là sự kiện quan trọng nhất. Khi đồng hồ đếm ngược hết giờ hoặc có người bấm Mua Ngay, hệ thống phải thực hiện 2 việc chính:
 1. **Việc 1 (Cốt lõi):** Đổi trạng thái phiên thầu sang `ENDED` và xác định người thắng (`winner`).
@@ -10,21 +10,21 @@ Trong hệ thống Đấu Giá `AuctionSystem`, **`AUCTION_ENDED` (Phiên Đấu
 
 ---
 
-### 💥 Thảm họa của cách làm cũ (Đồng bộ - Synchronous):
+### Thảm họa của cách làm cũ (Đồng bộ - Synchronous):
 Nếu ta bắt Robot `AuctionScheduler` vừa đổi trạng thái phiên thầu, vừa tạo Đơn hàng, vừa gọi dịch vụ Email trong **cùng 1 luồng duy nhất**:
 - **Nghẽn luồng:** Nếu dịch vụ gửi Email bị chậm 3 giây, toàn bộ Robot bị đứng ngâm 3 giây.
 - **Sập dây chuyền:** Nếu dịch vụ gửi Email bị ngắt mạng $\rightarrow$ Lỗi ném ra làm **Rollback** toàn bộ giao dịch $\rightarrow$ Dẫn đến thảm họa: **Người mua đấu giá thắng hợp lệ nhưng bị mất đơn hàng oan!**
 
 ---
 
-### ⚡ Giải pháp Kafka (Bất đồng bộ - Asynchronous Event-Driven):
+### Giải pháp Kafka (Bất đồng bộ - Asynchronous Event-Driven):
 Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 - Luồng chính (`AuctionScheduler`) chỉ làm đúng việc chốt trạng thái phiên thầu sang `ENDED` và **bắn 1 sự kiện `AuctionEndedEvent` lên Kafka trong < 2ms**.
 - Phía Consumer ngầm nhặt sự kiện từ Kafka và tự **thực sự đẻ bản ghi `Order` vào DB ngầm + Gửi Email/Push Notification** phía sau.
 
 ---
 
-# 🟢 2. SƠ ĐỒ DÒNG CHẢY HỆ THỐNG (ARCHITECTURAL DATA FLOW)
+# 2. SƠ ĐỒ DÒNG CHẢY HỆ THỐNG (ARCHITECTURAL DATA FLOW)
 
 ```text
 [ Robot Scheduler quét hết giờ ]
@@ -50,7 +50,7 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 ---
 
-# 📂 3. GIẢI THÍCH CHI TIẾT TỪNG FILE ĐÃ TẠO VÀ SỬA
+#  3. GIẢI THÍCH CHI TIẾT TỪNG FILE ĐÃ TẠO VÀ SỬA
 
 ### 1. File [`docker-compose.yml`](file:///home/duong/Projects/docker-compose.yml)
 - **Nhiệm vụ:** Dùng Docker khởi chạy 2 container ngầm cho hạ tầng Kafka:
@@ -111,29 +111,29 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 ---
 
-# 🧠 4. BỐN BÀI TOÁN KIẾN TRÚC KINH ĐIỂN ĐÃ ĐƯỢC GIẢI QUYẾT
+# 4. BỐN BÀI TOÁN KIẾN TRÚC KINH ĐIỂN ĐÃ ĐƯỢC GIẢI QUYẾT
 
 ---
 
-### 🧠 Bài Toán 1: Lỗi Dual-Write (Ghi DB vs Bắn Kafka lệch nhau)
+### Bài Toán 1: Lỗi Dual-Write (Ghi DB vs Bắn Kafka lệch nhau)
 - **Sự cố:** Nếu ghi DB `auction.setStatus(ENDED)` nhưng chưa commit mà đã bắn Kafka ngay $\rightarrow$ Khi DB bị nổ lỗi Rollback, Kafka đã lỡ gửi tin nhắn đi rồi $\rightarrow$ Lệch dữ liệu 2 bên!
 - **Giải pháp đã làm:** Dùng `TransactionSynchronizationManager.afterCommit(...)`. **Chờ DB Commit thành công 100% rồi mới cho phép bắn Kafka Event!**
 
 ---
 
-### 🧠 Bài Toán 2: Lỗi Spring AOP Self-Invocation (`this.method`)
+### Bài Toán 2: Lỗi Spring AOP Self-Invocation (`this.method`)
 - **Sự cố:** Trong Spring, nếu 1 method gọi tới 1 method khác trong **cùng 1 class** (`this.process(...)`), Spring AOP Proxy bị bỏ qua $\rightarrow$ Annotation `@Transactional(REQUIRES_NEW)` bị mất hiệu lực hoàn toàn!
 - **Giải pháp đã làm:** Tách logic chốt phiên sang Spring Component riêng [`AuctionEndedSettlementHelper`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/helper/AuctionEndedSettlementHelper.java). Lời gọi đi qua Spring Bean Proxy $\rightarrow$ Kích hoạt `REQUIRES_NEW` chuẩn 100%!
 
 ---
 
-### 🧠 Bài Toán 3: Bán Kính Ảnh Hưởng Lỗi (Transaction Blast Radius)
+###  Bài Toán 3: Bán Kính Ảnh Hưởng Lỗi (Transaction Blast Radius)
 - **Sự cố:** Nếu bọc `@Transactional` ở hàm cha cho toàn bộ 1.000 phiên thầu $\rightarrow$ 1 phiên bị lỗi sẽ làm **Rollback oan 999 phiên hợp lệ còn lại**.
 - **Giải pháp đã làm:** Dùng `@Transactional(propagation = Propagation.REQUIRES_NEW)` cho từng phiên trong Helper. Phiên nào lỗi chỉ rollback đúng phiên đó, các phiên khác vẫn commit và bắn Kafka bình thường!
 
 ---
 
-### 🧠 Bài Toán 4: Lỗi Thứ Tự Đánh Dấu Redis Chống Trùng (Idempotency Timing Bug)
+###  Bài Toán 4: Lỗi Thứ Tự Đánh Dấu Redis Chống Trùng (Idempotency Timing Bug)
 - **Sự cố:** Nếu đánh dấu `PROCESSED` vào Redis TRƯỚC KHI tạo Order $\rightarrow$ Khi tạo Order bị lỗi mạng tạm thời, Kafka đẩy tin nhắn sang Retry Topic để thử lại $\rightarrow$ Lượt thử lại đọc Redis thấy key `PROCESSED` đã tồn tại nên **bỏ qua luôn**, dẫn đến mất đơn hàng ngầm!
 - **Giải pháp đã làm (Check-Then-Mark Pattern):** 
   - Bước 1: Đọc `redisTemplate.hasKey` kiểm tra trước.

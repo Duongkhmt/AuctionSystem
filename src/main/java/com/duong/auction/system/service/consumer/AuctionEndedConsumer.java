@@ -9,6 +9,7 @@ import com.duong.auction.system.mapper.OrderMapper;
 import com.duong.auction.system.repository.AuctionRepository;
 import com.duong.auction.system.repository.OrderRepository;
 import com.duong.auction.system.repository.UserRepository;
+import com.duong.auction.system.service.EmailService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.data.redis.core.RedisTemplate;
@@ -35,6 +36,7 @@ public class AuctionEndedConsumer {
     private final OrderMapper orderMapper;
     private final RedisTemplate<String, String> redisTemplate;
     private final Clock clock;
+    private final EmailService emailService;
 
     private static final String IDEMPOTENT_KEY_PREFIX = "kafka:processed_event:";
 
@@ -70,6 +72,15 @@ public class AuctionEndedConsumer {
 
                 log.info("🛒 [Kafka Consumer SUCCESS] Đã tạo thành công Đơn hàng ngầm OrderId: {} (paymentDeadline: 48h) cho winnerId: {}",
                         order.getId(), winner.getId());
+                // 🟢 GỌI GỬI EMAIL THÔNG BÁO THẮNG THẦU NGẦM QUA KAFKA
+                emailService.sendAuctionWinnerEmail(
+                        winner.getEmail(),
+                        winner.getUsername() != null ? winner.getUsername() : winner.getEmail(),
+                        auction.getProduct().getTitle(),
+                        event.getFinalPrice(),
+                        order.getId(),
+                        order.getPaymentDeadline()
+                );
             }
         }
 

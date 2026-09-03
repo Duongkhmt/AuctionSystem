@@ -28,6 +28,9 @@ class CategoryServiceTest {
     @Mock
     private CategoryRepository categoryRepository; // Giả lập dữ liệu bảng danh mục
 
+    @Mock
+    private com.duong.auction.system.mapper.CategoryMapper categoryMapper;
+
     @InjectMocks
     private CategoryService categoryService; // Instance Service thật được tiêm @Mock
 
@@ -46,6 +49,11 @@ class CategoryServiceTest {
         inactiveCategory.setActive(false);
 
         given(categoryRepository.findAll()).willReturn(List.of(activeCategory, inactiveCategory));
+
+        CategoryResponseDTO dto = new CategoryResponseDTO();
+        dto.setId(1L);
+        dto.setName("Điện thoại");
+        given(categoryMapper.toResponseDTOList(List.of(activeCategory))).willReturn(List.of(dto));
 
         // 2. WHEN: Gọi phương thức lấy tất cả danh mục
         List<CategoryResponseDTO> result = categoryService.getAllCategories();

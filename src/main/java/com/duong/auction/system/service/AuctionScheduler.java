@@ -16,6 +16,7 @@ import com.duong.auction.system.repository.UserRepository;
 import com.duong.auction.system.service.helper.AuctionEndedSettlementHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 import org.springframework.transaction.annotation.Transactional;
@@ -47,6 +48,7 @@ public class AuctionScheduler {
 
     // Robot điều phối chạy ngầm định kỳ mỗi 10 giây (fixedRate = 10000ms)
     @Scheduled(fixedRate = 10000)
+    @CacheEvict(value = "auctions", allEntries = true)
     @Transactional
     public void processAuctionStatusTransitions() {
         LocalDateTime now = LocalDateTime.now(clock);

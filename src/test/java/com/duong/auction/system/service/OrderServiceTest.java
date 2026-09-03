@@ -6,6 +6,7 @@ import com.duong.auction.system.dto.response.CheckoutResponseDTO;
 import com.duong.auction.system.dto.response.SellerOrderResponseDTO;
 import com.duong.auction.system.dto.response.WonAuctionResponseDTO;
 import com.duong.auction.system.entity.Order;
+import com.duong.auction.system.entity.User;
 import com.duong.auction.system.entity.Payment;
 import com.duong.auction.system.enums.OrderStatus;
 import com.duong.auction.system.enums.PaymentMethod;
@@ -76,6 +77,14 @@ class OrderServiceTest {
      */
     @BeforeEach
     void setUp() {
+        User sampleUser = new User();
+        sampleUser.setId(10L);
+        sampleUser.setEmail("buyer@example.com");
+        sampleUser.setRole(com.duong.auction.system.enums.UserRole.USER);
+        com.duong.auction.system.security.UserCustomDetails userCustomDetails = new com.duong.auction.system.security.UserCustomDetails(sampleUser);
+        org.springframework.security.core.Authentication auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(userCustomDetails, null, userCustomDetails.getAuthorities());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
+
         sampleOrder = new Order();
         sampleOrder.setId(100L);
         sampleOrder.setStatus(OrderStatus.UNPAID);
@@ -97,7 +106,7 @@ class OrderServiceTest {
             given(userRepository.existsById(bidderId)).willReturn(false);
 
             // 2. WHEN & THEN: Bắt ngoại lệ USER_NOT_FOUND
-            assertThatThrownBy(() -> orderService.getWonAuctions(bidderId))
+            assertThatThrownBy(() -> orderService.getWonAuctions())
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -119,7 +128,7 @@ class OrderServiceTest {
             given(orderResponseHelper.buildWonAuctionDTOList(List.of(sampleOrder))).willReturn(List.of(dto));
 
             // 2. WHEN: Thực thi hàm getWonAuctions
-            List<WonAuctionResponseDTO> result = orderService.getWonAuctions(bidderId);
+            List<WonAuctionResponseDTO> result = orderService.getWonAuctions();
 
             // 3. THEN: Kiểm tra kết quả trả về đúng 1 phần tử DTO
             assertThat(result).hasSize(1);
@@ -145,7 +154,7 @@ class OrderServiceTest {
             given(orderRepository.findById(orderId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Bắt lỗi ORDER_NOT_FOUND
-            assertThatThrownBy(() -> orderService.checkout(orderId, buyerId, requestDTO))
+            assertThatThrownBy(() -> orderService.checkout(orderId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.ORDER_NOT_FOUND);
@@ -170,7 +179,7 @@ class OrderServiceTest {
             given(orderResponseHelper.buildCheckoutDTO(eq(sampleOrder), anyString())).willReturn(expectedResponse);
 
             // 2. WHEN: Gọi hàm checkout
-            CheckoutResponseDTO actualResponse = orderService.checkout(orderId, buyerId, requestDTO);
+            CheckoutResponseDTO actualResponse = orderService.checkout(orderId, requestDTO);
 
             // 3. THEN: Kiểm tra đơn hàng được đổi trạng thái PAID, địa chỉ và SĐT đúng
             assertThat(actualResponse).isEqualTo(expectedResponse);
@@ -203,7 +212,7 @@ class OrderServiceTest {
             given(orderRepository.findById(orderId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Bắt lỗi ORDER_NOT_FOUND
-            assertThatThrownBy(() -> orderService.shipOrder(orderId, sellerId, requestDTO))
+            assertThatThrownBy(() -> orderService.shipOrder(orderId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.ORDER_NOT_FOUND);
@@ -229,7 +238,7 @@ class OrderServiceTest {
             given(orderMapper.toSellerOrderDTO(sampleOrder)).willReturn(expectedDTO);
 
             // 2. WHEN: Gọi hàm shipOrder
-            SellerOrderResponseDTO actualDTO = orderService.shipOrder(orderId, sellerId, requestDTO);
+            SellerOrderResponseDTO actualDTO = orderService.shipOrder(orderId, requestDTO);
 
             // 3. THEN: Kiểm tra đơn chuyển sang SHIPPING, gán đơn vị vận chuyển và mã tra cứu
             assertThat(actualDTO).isEqualTo(expectedDTO);
@@ -263,7 +272,7 @@ class OrderServiceTest {
             given(orderResponseHelper.buildWonAuctionDTO(sampleOrder)).willReturn(expectedDTO);
 
             // 2. WHEN: Người mua bấm xác nhận đã nhận hàng
-            WonAuctionResponseDTO actualDTO = orderService.confirmReceived(orderId, buyerId);
+            WonAuctionResponseDTO actualDTO = orderService.confirmReceived(orderId);
 
             // 3. THEN: Kiểm tra đơn hàng hoàn tất vòng đời chuyển sang COMPLETED
             assertThat(actualDTO).isEqualTo(expectedDTO);

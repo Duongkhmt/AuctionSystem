@@ -121,6 +121,11 @@ class ProductServiceTest {
         sampleSeller = new User();
         sampleSeller.setId(10L);
         sampleSeller.setEmail("seller@example.com");
+        sampleSeller.setRole(com.duong.auction.system.enums.UserRole.USER);
+
+        com.duong.auction.system.security.UserCustomDetails userCustomDetails = new com.duong.auction.system.security.UserCustomDetails(sampleSeller);
+        org.springframework.security.core.Authentication auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(userCustomDetails, null, userCustomDetails.getAuthorities());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
 
         sampleCategory = new Category();
         sampleCategory.setId(5L);
@@ -170,7 +175,7 @@ class ProductServiceTest {
             given(userRepository.findById(sellerId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Bắt lỗi USER_NOT_FOUND
-            assertThatThrownBy(() -> productService.createProduct(sellerId, requestDTO))
+            assertThatThrownBy(() -> productService.createProduct(requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -191,7 +196,7 @@ class ProductServiceTest {
             given(categoryRepository.findById(999L)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Bắt lỗi CATEGORY_NOT_FOUND
-            assertThatThrownBy(() -> productService.createProduct(sellerId, requestDTO))
+            assertThatThrownBy(() -> productService.createProduct(requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.CATEGORY_NOT_FOUND);
@@ -215,7 +220,7 @@ class ProductServiceTest {
             given(categoryRepository.findById(5L)).willReturn(Optional.of(inactiveCategory));
 
             // 2. WHEN & THEN: Bắt lỗi CATEGORY_INACTIVE
-            assertThatThrownBy(() -> productService.createProduct(sellerId, requestDTO))
+            assertThatThrownBy(() -> productService.createProduct(requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.CATEGORY_INACTIVE);
@@ -263,7 +268,7 @@ class ProductServiceTest {
                     .willReturn(expectedResponse);
 
             // 2. WHEN: Gọi hàm createProduct
-            ProductResponseDTO actualResponse = productService.createProduct(sellerId, requestDTO);
+            ProductResponseDTO actualResponse = productService.createProduct(requestDTO);
 
             // 3. THEN: Kiểm tra bài đăng ở trạng thái PENDING và trả về DTO đúng
             assertThat(actualResponse).isEqualTo(expectedResponse);
@@ -291,7 +296,7 @@ class ProductServiceTest {
             given(userRepository.existsById(sellerId)).willReturn(false);
 
             // 2. WHEN & THEN: Bắt lỗi USER_NOT_FOUND
-            assertThatThrownBy(() -> productService.getProductsBySellerId(sellerId))
+            assertThatThrownBy(() -> productService.getProductsBySellerId())
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.USER_NOT_FOUND);
@@ -311,7 +316,7 @@ class ProductServiceTest {
             given(productResponseHelper.buildAll(List.of(sampleProduct))).willReturn(List.of(dto));
 
             // 2. WHEN: Gọi hàm lấy bài đăng của Người bán
-            List<ProductResponseDTO> result = productService.getProductsBySellerId(sellerId);
+            List<ProductResponseDTO> result = productService.getProductsBySellerId();
 
             // 3. THEN: Kiểm tra danh sách trả về đúng 1 phần tử
             assertThat(result).hasSize(1);
@@ -513,7 +518,7 @@ class ProductServiceTest {
             given(productResponseHelper.build(sampleProduct)).willReturn(dto);
 
             // 2. WHEN: Người bán bấm Hủy bài
-            ProductResponseDTO result = productService.cancelAuction(sellerId, productId);
+            ProductResponseDTO result = productService.cancelAuction(productId);
 
             // 3. THEN: Trạng thái phiên thầu chuyển sang CANCELLED
             assertThat(result).isEqualTo(dto);
@@ -535,7 +540,7 @@ class ProductServiceTest {
             given(productResponseHelper.build(sampleProduct)).willReturn(dto);
 
             // 2. WHEN: Người bán bấm Đăng Lại (Relist)
-            ProductResponseDTO result = productService.relistAuction(sellerId, auctionId);
+            ProductResponseDTO result = productService.relistAuction(auctionId);
 
             // 3. THEN: Trạng thái khôi phục RUNNING và thời gian kết thúc tự động gia hạn thêm 30 ngày từ hiện tại
             assertThat(result).isEqualTo(dto);
@@ -565,7 +570,7 @@ class ProductServiceTest {
             given(productRepository.findById(productId)).willReturn(Optional.of(sampleProduct));
 
             // 2. WHEN & THEN: Ném ra lỗi UNAUTHORIZED_ACCESS
-            assertThatThrownBy(() -> productService.updateProduct(sellerId, productId, requestDTO))
+            assertThatThrownBy(() -> productService.updateProduct(productId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.UNAUTHORIZED_ACCESS);
@@ -584,7 +589,7 @@ class ProductServiceTest {
             given(auctionRepository.findByProduct_Id(productId)).willReturn(Optional.of(sampleAuction));
 
             // 2. WHEN & THEN: Ném lỗi AUCTION_ALREADY_STARTED
-            assertThatThrownBy(() -> productService.updateProduct(sellerId, productId, requestDTO))
+            assertThatThrownBy(() -> productService.updateProduct(productId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.AUCTION_ALREADY_STARTED);
@@ -610,7 +615,7 @@ class ProductServiceTest {
             given(productResponseHelper.build(sampleProduct)).willReturn(dto);
 
             // 2. WHEN: Thực thi updateProduct
-            ProductResponseDTO result = productService.updateProduct(sellerId, productId, requestDTO);
+            ProductResponseDTO result = productService.updateProduct(productId, requestDTO);
 
             // 3. THEN: Trả về DTO và lưu product/auction
             assertThat(result).isEqualTo(dto);
@@ -630,7 +635,7 @@ class ProductServiceTest {
             given(auctionRepository.findByProduct_Id(productId)).willReturn(Optional.of(sampleAuction));
 
             // 2. WHEN & THEN: Ném lỗi CANNOT_DELETE_ACTIVE_AUCTION
-            assertThatThrownBy(() -> productService.deleteProduct(sellerId, productId))
+            assertThatThrownBy(() -> productService.deleteProduct(productId))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.CANNOT_DELETE_ACTIVE_AUCTION);
@@ -651,7 +656,7 @@ class ProductServiceTest {
             given(productImageRepository.findByProductIdOrderByDisplayOrderAsc(productId)).willReturn(List.of());
 
             // 2. WHEN: Gọi hàm deleteProduct
-            productService.deleteProduct(sellerId, productId);
+            productService.deleteProduct(productId);
 
             // 3. THEN: Kiểm tra đã gọi xóa khỏi DB
             then(productImageRepository).should(times(1)).deleteByProductId(productId);

@@ -1,7 +1,5 @@
 # BÁO CÁO PHÂN TÍCH QUAN HỆ DATABASE (DB RELATIONS) VÀ ĐÁNH GIÁ MỨC ĐỘ TƯƠNG THÍCH VỚI TÍNH NĂNG NGHIỆP VỤ (FEATURE ALIGNMENT)
 
-**Hệ thống:** Sàn Đấu Giá Trực Tuyến Đa Ngành Hàng (`DuAnTrainning.AuctionSystem`)  
-
 ---
 
 ## 📋 TỔNG QUAN

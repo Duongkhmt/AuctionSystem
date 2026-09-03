@@ -27,7 +27,7 @@ public class AuctionKafkaProducer {
     public void sendAuctionEndedEvent(AuctionEndedEvent event) {
         log.info("🚀 [Kafka Producer] Đang gửi sự kiện AUCTION_ENDED lên Kafka. AuctionId: {}, WinnerId: {}",
                 event.getAuctionId(), event.getWinnerId());
-
+        // 👉 GỌI HÀM SEND CỦA SPRING KAFKA TEMPLATE
         CompletableFuture<SendResult<Object, Object>> future = kafkaTemplate.send(
                 KafkaConfig.TOPIC_AUCTION_ENDED,
                 String.valueOf(event.getAuctionId()), // Partition Key

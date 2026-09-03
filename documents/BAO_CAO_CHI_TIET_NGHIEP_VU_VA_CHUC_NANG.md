@@ -2,7 +2,7 @@
 
 ---
 
-## 📌 I. TỔNG QUAN BÀI TOÁN VÀ ĐỐI TƯỢNG SỬ DỤNG
+##  I. TỔNG QUAN BÀI TOÁN VÀ ĐỐI TƯỢNG SỬ DỤNG
 
 ### 1. Tổng quan Dự án & Bài toán Kinh doanh
 - **DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho Nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng (Nhà đất, Xe hơi, Tranh nghệ thuật, Đồ cổ, Đồ điện tử...).
@@ -27,7 +27,7 @@
 
 ---
 
-## ⚙️ II. CÁC HỆ THỐNG QUY TẮC NGHIỆP VỤ VÀ CƠ CHẾ TỰ ĐỘNG CỐT LÕI
+## II. CÁC HỆ THỐNG QUY TẮC NGHIỆP VỤ VÀ CƠ CHẾ TỰ ĐỘNG CỐT LÕI
 
 ### 1. Ma trận Vòng đời Trạng thái (State Machine Matrix)
 
@@ -127,7 +127,7 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-## 🛍️ III. CHI TIẾT CỤ THỂ TOÀN BỘ CHỨC NĂNG NGHIỆP VỤ
+## III. CHI TIẾT CỤ THỂ TOÀN BỘ CHỨC NĂNG NGHIỆP VỤ
 
 ### 📱 PHÂN HỆ 1: KHÁCH VẮNG LAI & NGƯỜI MUA (GUEST & BIDDER)
 
@@ -175,7 +175,7 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-### 🏪 PHÂN HỆ 2: NGƯỜI BÁN (SELLER PORTAL)
+### PHÂN HỆ 2: NGƯỜI BÁN (SELLER PORTAL)
 
 #### 2.1. Đăng sản phẩm mới & Cấu hình phiên (`Create Product & Auction`)
 - **API:** `POST /v1/sellers/{sellerId}/products`
@@ -216,7 +216,7 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-### 🛡️ PHÂN HỆ 3: QUẢN TRỊ VIÊN (ADMIN MODERATION)
+### PHÂN HỆ 3: QUẢN TRỊ VIÊN (ADMIN MODERATION)
 
 #### 3.1. Xem danh sách bài chờ duyệt (`Pending Products List`)
 - **API:** `GET /v1/admin/products/pending`
@@ -235,7 +235,7 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-### 🤖 PHÂN HỆ 4: ROBOT SCHEDULER NGẦM & HẬU ĐẤU GIÁ
+### PHÂN HỆ 4: ROBOT SCHEDULER NGẦM & HẬU ĐẤU GIÁ
 
 #### 4.1. Tự động chốt phiên & Sinh đơn hàng hậu đấu giá
 - Ngầm 10s/lần hoặc khi Mua Ngay thành công, chốt Winner, đổi phiên sang `ENDED`, tự động khởi tạo Đơn hàng (`Order`) ở trạng thái `UNPAID` kèm deadline 48 tiếng (`paymentDeadline = now + 48h`).
@@ -248,7 +248,7 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-## 🗄️ IV. THIẾT KẾ CƠ SỞ DỮ LIỆU & MÃ NGUỒN
+## 🗄IV. THIẾT KẾ CƠ SỞ DỮ LIỆU & MÃ NGUỒN
 
 ### 1. Bảng 8 Entity PostgreSQL
 1. `User` (`users`): `id`, `username`, `email`, `passwordHash`, `unpaidStrikeCount`, `bannedUntil`, `role` (`UserRole`), `status` (`UserStatus`), `createdAt`.
@@ -279,7 +279,7 @@ src/main/java/com/duong/auction/system
 
 ---
 
-## 🔐 V. HỆ THỐNG BẢO MẬT & PHÂN QUYỀN JWT TẬP TRUNG
+##  V. HỆ THỐNG BẢO MẬT & PHÂN QUYỀN JWT TẬP TRUNG
 
 ### 1. Kiến trúc Xác thực Stateless (JWT + Spring Security)
 - **Email-Based Login**: Sử dụng Email làm định danh duy nhất đăng nhập hệ thống (`POST /v1/auth/login`).

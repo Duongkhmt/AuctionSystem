@@ -1,8 +1,8 @@
-# 🚀 TÀI LIỆU PHÂN TÍCH CHUYÊN SÂU: KIẾN TRÚC EVENT-DRIVEN VỚI APACHE KAFKA & GIẢI PHÁP XỬ LÝ LỖI DLT (RETRY & DEAD LETTER TOPIC)
+# TÀI LIỆU PHÂN TÍCH CHUYÊN SÂU: KIẾN TRÚC EVENT-DRIVEN VỚI APACHE KAFKA & GIẢI PHÁP XỬ LÝ LỖI DLT (RETRY & DEAD LETTER TOPIC)
 
 ---
 
-# 📌 1. BÀI TOÁN NGHIỆP VỤ CỐT LÕI (CORE BUSINESS PROBLEM)
+# 1. BÀI TOÁN NGHIỆP VỤ CỐT LÕI (CORE BUSINESS PROBLEM)
 
 Trong hệ thống Đấu Giá Trực Tuyến `AuctionSystem`, khi một phiên đấu giá đến giờ hết hạn hoặc có người bấm **Mua Ngay**, sự kiện **`AUCTION_ENDED` (Phiên Đấu Giá Kết Thúc)** được kích hoạt.
 
@@ -16,7 +16,7 @@ Tại thời điểm này, hệ thống phải thực hiện hàng loạt các t
 
 ---
 
-### 💥 Thảm Họa Của Mô Hình Xử Lý Đồng Bộ (Synchronous Model)
+### Thảm Họa Của Mô Hình Xử Lý Đồng Bộ (Synchronous Model)
 
 Nếu hệ thống xử lý tất cả 6 công việc trên **trên cùng 1 luồng xử lý đồng bộ** (Request-Response):
 
@@ -35,43 +35,43 @@ Nếu hệ thống xử lý tất cả 6 công việc trên **trên cùng 1 lu�
 
 ---
 
-# 💣 2. CÁC KỊCH BẢN SỰ CỐ THỰC TẾ CHI TIẾT (REAL-WORLD FAILURE SCENARIOS)
+# 2. CÁC KỊCH BẢN SỰ CỐ THỰC TẾ CHI TIẾT (REAL-WORLD FAILURE SCENARIOS)
 
 Khi triển khai các hệ thống phân tán chịu tải cao, chúng ta phải lường trước **4 kịch bản sự cố thực tế** sau:
 
 ---
 
-### 💣 Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
+###  Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
 - **Tình huống:** Máy chủ gửi Email (SendGrid / Amazon SES) bị quá tải hoặc chập chờn mạng trong khoảng 3 đến 5 giây.
 - **Hậu quả nếu xử lý kém:** Nếu không có cơ chế thử lại thông minh, hàng trăm email thông báo trúng thầu sẽ bị bốc hơi hoàn toàn. Người thắng thầu không nhận được thông báo để vào thanh toán trong 48h.
 
 ---
 
-### 💣 Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
+###  Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
 - **Tình huống:** Một tin nhắn sự kiện `AUCTION_ENDED` bị lỗi cấu trúc dữ liệu (ví dụ: thiếu thông tin ID người thắng, hoặc sai định dạng số tiền) do lỗi code ở phía phát tin nhắn.
 - **Hậu quả nếu xử lý kém:** Khi phía nhận tin nhắn (Consumer) đọc phải tin nhắn hỏng này, nó sẽ ném lỗi liên tục. Nếu hệ thống cứ bắt thử lại liên tục tại chỗ (Infinite Retry Loop) $\rightarrow$ **Toàn bộ băng chuyền xử lý tin nhắn bị nghẽn cứng, hàng vạn tin nhắn hợp lệ của các phiên đấu giá khác nằm phía sau không bao giờ được xử lý!**
 
 ---
 
-### 💣 Kịch Bản 3: Sự Cố Trừu Tượng Do Máy Chủ Consumer Bị Restart (App Crash During Processing)
+###  Kịch Bản 3: Sự Cố Trừu Tượng Do Máy Chủ Consumer Bị Restart (App Crash During Processing)
 - **Tình huống:** Phía Consumer vừa nhặt tin nhắn sự kiện xuống, chưa kịp xử lý tạo đơn hàng xong thì máy chủ bị ngắt điện hoặc bị restart (OOM / Deploy phiên bản mới).
 - **Hậu quả nếu xử lý kém:** Nếu không có cơ chế quản lý vị trí đọc (Offset Management) và xác nhận an toàn, tin nhắn sẽ bị mất tích hoặc bị đọc lại đẻ ra 2 đơn hàng trùng lặp cho cùng 1 phiên đấu giá.
 
 ---
 
-### 💣 Kịch Bản 4: Bùng Nổ Tải Phút Chót (High Throughput Spike)
+###  Kịch Bản 4: Bùng Nổ Tải Phút Chót (High Throughput Spike)
 - **Tình huống:** Vào khung giờ vàng (20h00), có **1.000 phiên đấu giá cùng kết thúc tại đúng 1 mốc giây**.
 - **Hậu quả nếu xử lý kém:** Máy chủ bị quá tải CPU/RAM nếu phải khởi tạo 1.000 luồng xử lý đồng thời để gửi email và tạo đơn hàng.
 
 ---
 
-# 🚀 3. HƯỚNG GIẢI QUYẾT CHI TIẾT (DETAILED ARCHITECTURAL SOLUTION)
+# 3. HƯỚNG GIẢI QUYẾT CHI TIẾT (DETAILED ARCHITECTURAL SOLUTION)
 
 Để giải quyết triệt để 4 kịch bản sự cố trên, chúng ta áp dụng **Kiến Trúc Hướng Sự Kiện (Event-Driven Architecture)** kết hợp với **Apache Kafka** và **Chiến Lược Xử Lý Lỗi 3 Tầng (Retry & Dead Letter Topic - DLT)**.
 
 ---
 
-## 🏗️ THÀNH PHẦN 1: BẤT ĐỒNG BỘ HOÀN TOÀN VỚI APACHE KAFKA (DECOUPLING)
+## ️ THÀNH PHẦN 1: BẤT ĐỒNG BỘ HOÀN TOÀN VỚI APACHE KAFKA (DECOUPLING)
 
 Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng chính của Đấu Giá chỉ làm đúng 1 nhiệm vụ duy nhất:
 1. Phát hiện phiên thầu kết thúc.
@@ -94,7 +94,7 @@ Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng c
 
 ---
 
-## 🛡️ THÀNH PHẦN 2: CHIẾN LƯỢC XỬ LÝ LỖI 3 TẦNG (RETRY TOPIC & DEAD LETTER TOPIC - DLT)
+## THÀNH PHẦN 2: CHIẾN LƯỢC XỬ LÝ LỖI 3 TẦNG (RETRY TOPIC & DEAD LETTER TOPIC - DLT)
 
 Đây là **trái tim của giải pháp** giúp hệ thống vừa tự sửa lỗi vừa không bao giờ bị nghẽn mạch khi gặp "tin nhắn hỏng":
 
@@ -126,7 +126,7 @@ Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng c
 
 ---
 
-### 🔍 Mổ Xẻ Chi Tiết Cách Thức Hoạt Động Của 3 Tầng:
+### Mổ Xẻ Chi Tiết Cách Thức Hoạt Động Của 3 Tầng:
 
 #### 1️⃣ Tầng 1 — Topic Chính (`auction.events.ended`):
 - Nơi các Consumer nhặt tin nhắn và xử lý luồng bình thường.
@@ -147,7 +147,7 @@ Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng c
 
 ---
 
-# 📊 4. BẢNG TỔNG HỢP SO SÁNH GIỮA CÁC MÔ HÌNH XỬ LÝ
+#  4. BẢNG TỔNG HỢP SO SÁNH GIỮA CÁC MÔ HÌNH XỬ LÝ
 
 | Tiêu Chí | Mô Hình Đồng Bộ Cũ (Synchronous) | Mô Hình Bất Đồng Bộ Dùng Kafka (Basic) | Mô Hình Kafka + DLT 3 Tầng (Tối Ưu) |
 | :--- | :--- | :--- | :--- |
@@ -158,7 +158,7 @@ Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng c
 
 ---
 
-# 🎯 5. KẾT LUẬN
+#  5. KẾT LUẬN
 
 Tài liệu này cung cấp một **bức tranh toàn cảnh về mặt kiến trúc và giải pháp nghiệp vụ**:
 - Giải thích rõ **tại sao** xử lý đồng bộ lại nguy hiểm đối với sự kiện `AUCTION_ENDED`.

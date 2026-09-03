@@ -1,10 +1,10 @@
-# 🚀 BÁO CÁO TỔNG THỂ KIẾN TRÚC VÀ GIẢI PHÁP TỐI ƯU HỆ THỐNG ĐẤU GIÁ (REDIS ATOMIC ARCHITECTURE)
+# BÁO CÁO TỔNG THỂ KIẾN TRÚC VÀ GIẢI PHÁP TỐI ƯU HỆ THỐNG ĐẤU GIÁ (REDIS ATOMIC ARCHITECTURE)
 
 ---
 
-# 🔴 PHẦN 1: BÀI TOÁN & GIẢI PHÁP ĐẶT GIÁ CAO VẬN TỐC (PLACE BID)
+# PHẦN 1: BÀI TOÁN & GIẢI PHÁP ĐẶT GIÁ CAO VẬN TỐC (PLACE BID)
 
-### 📌 1. Vấn Đề Của Bài Toán Đặt Giá
+###  1. Vấn Đề Của Bài Toán Đặt Giá
 Trong 3 giây cuối cùng của phiên đấu giá, hàng trăm/hàng ngàn người dùng (100+ requests) cùng bấm nút **Đặt Giá** tại đúng mốc 1 mili-giây.
 
 Nếu dùng cơ chế ghi đĩa PostgreSQL truyền thống:
@@ -23,7 +23,7 @@ Vì Redis xử lý lệnh theo cơ chế **Đơn luồng (Single-thread)**, toà
 
 ---
 
-# 🔴 PHẦN 2: LUỒNG THỰC THI TRONG MÃ NGUỒN (`BiddingService.java`)
+# PHẦN 2: LUỒNG THỰC THI TRONG MÃ NGUỒN (`BiddingService.java`)
 
 ```java
 @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
@@ -78,31 +78,31 @@ public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requ
 
 ---
 
-# 🔴 PHẦN 3: BẢNG SO SÁNH 3 TRỤ CỘT REDIS TRONG DỰ ÁN
+#  PHẦN 3: BẢNG SO SÁNH 3 TRỤ CỘT REDIS TRONG DỰ ÁN
 
 ```
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
 | TIÊU CHÍ          | 1. REDIS CACHING                  | 2. REDIS RATE LIMITING            | 3. REDIS ATOMIC LUA SCRIPT        |
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
-| 🎯 Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    |
-| 🔑 Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | auction:state:101                 |
-| ⚙️ Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Lua Script Atomic (Read-Check-Set)|
-| 🛡️ Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Chống Race Condition & Đè giá sai |
-| 💥 Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | 409 Timeout, đè sai giá đấu       |
+|  Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    |
+|  Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | auction:state:101                 |
+| Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Lua Script Atomic (Read-Check-Set)|
+| Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Chống Race Condition & Đè giá sai |
+|  Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | 409 Timeout, đè sai giá đấu       |
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
 ```
 
 ---
 
-# 🔴 PHẦN 4: BÀI TOÁN XỬ LÝ CHỐT PHIÊN ĐẤU GIÁ BẤT ĐỒNG BỘ (APACHE KAFKA & DLT)
+#  PHẦN 4: BÀI TOÁN XỬ LÝ CHỐT PHIÊN ĐẤU GIÁ BẤT ĐỒNG BỘ (APACHE KAFKA & DLT)
 
-### 📌 1. Vấn Đề Của Bài Toán Kết Thúc Đấu Giá (`AUCTION_ENDED`)
+###  1. Vấn Đề Của Bài Toán Kết Thúc Đấu Giá (`AUCTION_ENDED`)
 - Khi một phiên đấu giá kết thúc (do hết giờ hoặc người dùng Mua Ngay), hệ thống phải vừa đổi trạng thái phiên thầu, vừa đẻ đơn hàng `Order` UNPAID 48h, vừa gửi Email và Push Notification.
 - **Hậu quả nếu làm đồng bộ (Synchronous):** Nếu dịch vụ Email bị chậm hoặc rớt mạng, cả Robot `AuctionScheduler` bị đóng băng, dẫn đến lỗi Rollback làm người thắng thầu hợp lệ bị mất đơn hàng!
 
 ---
 
-### ⚡ 2. Giải Pháp Tối Ưu: Event-Driven Architecture với Apache Kafka
+### 2. Giải Pháp Tối Ưu: Event-Driven Architecture với Apache Kafka
 - **Luồng chính (`AuctionScheduler` / `BiddingService.executeBuyNow`):** Chốt `Auction.status = ENDED` và phát sự kiện `AuctionEndedEvent` lên Kafka Broker trong `< 2ms`.
 - **Luồng ngầm (`AuctionEndedConsumer`):** Tiêu thụ sự kiện ngầm, thực sự đẻ đơn hàng `Order` vào DB và gửi Email.
 - **Cơ chế Bảo vệ 3 Tầng:**
@@ -112,7 +112,7 @@ public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requ
 
 ---
 
-# 📂 PHẦN 5: DANH SÁCH FILE VÀ TRẠNG THÁI TRIỂN KHAI TỔNG THỂ
+#  PHẦN 5: DANH SÁCH FILE VÀ TRẠNG THÁI TRIỂN KHAI TỔNG THỂ
 
 | STT | Tên File | Vai Trò | Trạng Thái |
 | :--- | :--- | :--- | :--- |
@@ -127,5 +127,5 @@ public BidResponseDTO placeBid(Long bidderId, Long auctionId, BidRequestDTO requ
 
 ---
 
-### 🎯 TÓM LẠI:
+### TÓM LẠI:
 Hệ thống Đấu Giá của bạn hiện đã hoàn thiện **2 Động Cơ Kiến Trúc Hàng Đầu**: **Redis Atomic Lua Script** (cho luồng Đặt Giá cao vận tốc) và **Apache Kafka Event-Driven Architecture** (cho luồng Chốt Thầu & Đẻ Đơn Ngầm)! 🚀
