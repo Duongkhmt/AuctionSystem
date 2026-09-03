@@ -23,17 +23,16 @@ import java.util.function.Supplier;
 @RequiredArgsConstructor
 public class BiddingConcurrencyFacade {
 
-    private final RedissonClient redissonClient; // Thư viện kết nối xuống Redis để quản lý ổ khóa
-    private final BiddingService biddingService; // Service chứa logic nghiệp vụ và @Transactional DB
+    private final RedissonClient redissonClient;
+    private final BiddingService biddingService;
 
     /**
      * [ĐOẠN 1]: Bọc Khóa Phân Tán cho luồng Đặt Giá Cạnh Tranh (placeBid)
      * Ý nghĩa: Nhét công việc placeBid vào Hộp Callback Supplier và truyền qua hàm hạ tầng xử lý lock.
      */
     public BidResponseDTO placeBidWithLock(Long auctionId, BidRequestDTO requestDTO) {
-        return executeWithAuctionLock(auctionId, () ->
-                biddingService.placeBid(auctionId, requestDTO)
-        );
+        return biddingService.placeBid(auctionId, requestDTO);
+
     }
 
     /**

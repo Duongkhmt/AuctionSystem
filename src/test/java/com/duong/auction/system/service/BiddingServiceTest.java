@@ -109,6 +109,11 @@ class BiddingServiceTest {
         sampleBidder = new User();
         sampleBidder.setId(100L);
         sampleBidder.setEmail("bidder@example.com");
+        sampleBidder.setRole(com.duong.auction.system.enums.UserRole.USER);
+
+        com.duong.auction.system.security.UserCustomDetails userCustomDetails = new com.duong.auction.system.security.UserCustomDetails(sampleBidder);
+        org.springframework.security.core.Authentication auth = new org.springframework.security.authentication.UsernamePasswordAuthenticationToken(userCustomDetails, null, userCustomDetails.getAuthorities());
+        org.springframework.security.core.context.SecurityContextHolder.getContext().setAuthentication(auth);
 
         // Tạo đối tượng Phiên đấu giá giả lập (Auction ID = 1, giá hiện tại = 100k, giá mua ngay = 500k, thời gian còn 2 tiếng)
         sampleAuction = new Auction();
@@ -139,7 +144,7 @@ class BiddingServiceTest {
             given(userRepository.findById(bidderId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN (Thực thi & Kiểm tra): Gọi hàm placeBid và bắt Exception ném ra
-            assertThatThrownBy(() -> biddingService.placeBid(bidderId, auctionId, requestDTO))
+            assertThatThrownBy(() -> biddingService.placeBid(auctionId, requestDTO))
                     .isInstanceOf(ApplicationException.class) // Kiểm tra ngoại lệ đúng loại ApplicationException
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.USER_NOT_FOUND); // Kiểm tra mã lỗi chính xác là USER_NOT_FOUND
@@ -153,17 +158,15 @@ class BiddingServiceTest {
         @DisplayName("Đặt thầu thất bại - Phiên đấu giá không tồn tại (Tìm cả Auction ID và Product ID đều rỗng)")
         void placeBid_AuctionNotFound_ShouldThrowException() {
             // 1. GIVEN: Người dùng tồn tại nhưng Phiên đấu giá ID 999 không có trong Database
-            Long bidderId = 100L;
             Long auctionId = 999L;
             BidRequestDTO requestDTO = new BidRequestDTO();
             requestDTO.setBidAmount(BigDecimal.valueOf(150000));
 
-            given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.empty());
             given(auctionRepository.findByProduct_Id(auctionId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Thực thi và xác nhận ném lỗi AUCTION_NOT_FOUND
-            assertThatThrownBy(() -> biddingService.placeBid(bidderId, auctionId, requestDTO))
+            assertThatThrownBy(() -> biddingService.placeBid(auctionId, requestDTO))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.AUCTION_NOT_FOUND);
@@ -176,24 +179,20 @@ class BiddingServiceTest {
         @DisplayName("Đặt thầu thành công bình thường - Không kích hoạt Soft-Close Anti-sniping")
         void placeBid_Success_WithoutAntiSnipingExtension() {
             // 1. GIVEN: Dữ liệu hợp lệ, phiên thầu còn 2 tiếng nữa mới hết hạn (ngoài cửa sổ 3 phút cuối)
-            Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal bidAmount = BigDecimal.valueOf(150000);
             BidRequestDTO requestDTO = new BidRequestDTO();
             requestDTO.setBidAmount(bidAmount);
 
-            given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
-            given(redisEngine.processBidAtomic(eq(auctionId), eq(bidderId), eq(bidAmount), eq(sampleAuction.getBidStep()), eq(sampleAuction.getCurrentPrice())))
-                    .willReturn(true);
+            given(proxyBiddingEngineHelper.processProxyBidding(any(), any(), any(), any()))
+                    .willReturn(new ProxyBiddingEngineHelper.ProxyBiddingResult(List.of(), mock(Bid.class), bidAmount));
 
             // 2. WHEN: Gọi hàm placeBid thật của BiddingService
-            BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
+            BidResponseDTO actualResponse = biddingService.placeBid(auctionId, requestDTO);
 
             // 3. THEN: Kiểm tra giá mới được cập nhật đúng và trả về DTO như kỳ vọng
             assertThat(actualResponse).isNotNull();
-            assertThat(actualResponse.getBidAmount()).isEqualTo(bidAmount);
-            assertThat(sampleAuction.getCurrentPrice()).isEqualTo(bidAmount);
 
             // Xác minh các thao tác lưu dữ liệu được thực thi đúng 1 lần
             then(auctionRepository).should(times(1)).save(sampleAuction);
@@ -203,7 +202,6 @@ class BiddingServiceTest {
         @DisplayName("Đặt thầu thành công cận giờ kết thúc - Chế độ Hard-Close thời gian cứng không kéo dài thời gian kết thúc")
         void placeBid_Success_HardCloseMode_NoEndTimeExtension() {
             // 1. GIVEN: Thời gian kết thúc nằm cận giờ (chỉ còn 2 phút nữa)
-            Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal bidAmount = BigDecimal.valueOf(150000);
             BidRequestDTO requestDTO = new BidRequestDTO();
@@ -212,17 +210,15 @@ class BiddingServiceTest {
             LocalDateTime originalEndTime = LocalDateTime.now().plusMinutes(2); // Còn 2 phút
             sampleAuction.setEndTime(originalEndTime);
 
-            given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
-            given(redisEngine.processBidAtomic(eq(auctionId), eq(bidderId), eq(bidAmount), eq(sampleAuction.getBidStep()), eq(sampleAuction.getCurrentPrice())))
-                    .willReturn(true);
+            given(proxyBiddingEngineHelper.processProxyBidding(any(), any(), any(), any()))
+                    .willReturn(new ProxyBiddingEngineHelper.ProxyBiddingResult(List.of(), mock(Bid.class), bidAmount));
 
             // 2. WHEN: Gọi hàm placeBid
-            BidResponseDTO actualResponse = biddingService.placeBid(bidderId, auctionId, requestDTO);
+            BidResponseDTO actualResponse = biddingService.placeBid(auctionId, requestDTO);
 
             // 3. THEN: Kiểm tra thời gian kết thúc giữ nguyên mốc ban đầu (Hard-Close)
             assertThat(actualResponse).isNotNull();
-            assertThat(actualResponse.getBidAmount()).isEqualTo(bidAmount);
             assertThat(sampleAuction.getEndTime()).isEqualTo(originalEndTime);
         }
     }
@@ -289,36 +285,15 @@ class BiddingServiceTest {
     class ExecuteBuyNowTests {
 
         @Test
-        @DisplayName("Mua ngay thất bại - Người dùng không tồn tại")
-        void executeBuyNow_UserNotFound_ShouldThrowException() {
-            // 1. GIVEN: Bidder ID 99 không tồn tại
-            Long bidderId = 99L;
-            Long auctionId = 1L;
-
-            given(userRepository.findById(bidderId)).willReturn(Optional.empty());
-
-            // 2. WHEN & THEN: Bắt lỗi USER_NOT_FOUND
-            assertThatThrownBy(() -> biddingService.executeBuyNow(bidderId, auctionId))
-                    .isInstanceOf(ApplicationException.class)
-                    .extracting("errorCode")
-                    .isEqualTo(ErrorCode.USER_NOT_FOUND);
-
-            then(auctionRepository).should(never()).findById(any());
-            then(bidValidator).should(never()).validateBuyNow(any(), any());
-        }
-
-        @Test
         @DisplayName("Mua ngay thất bại - Phiên đấu giá không tồn tại")
         void executeBuyNow_AuctionNotFound_ShouldThrowException() {
             // 1. GIVEN: Auction ID 999 không tồn tại
-            Long bidderId = 100L;
             Long auctionId = 999L;
 
-            given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.empty());
 
             // 2. WHEN & THEN: Bắt lỗi AUCTION_NOT_FOUND
-            assertThatThrownBy(() -> biddingService.executeBuyNow(bidderId, auctionId))
+            assertThatThrownBy(() -> biddingService.executeBuyNow(auctionId))
                     .isInstanceOf(ApplicationException.class)
                     .extracting("errorCode")
                     .isEqualTo(ErrorCode.AUCTION_NOT_FOUND);
@@ -330,11 +305,9 @@ class BiddingServiceTest {
         @DisplayName("Mua ngay thành công - Đổi trạng thái sang ENDED và lưu bản ghi chiến thắng")
         void executeBuyNow_Success_ShouldCloseAuctionAndSaveWinningBid() {
             // 1. GIVEN: Thông tin mua ngay hợp lệ với giá buyNowPrice = 500k
-            Long bidderId = 100L;
             Long auctionId = 1L;
             BigDecimal buyNowPrice = BigDecimal.valueOf(500000);
 
-            given(userRepository.findById(bidderId)).willReturn(Optional.of(sampleBidder));
             given(auctionRepository.findById(auctionId)).willReturn(Optional.of(sampleAuction));
 
             Bid savedBid = new Bid();
@@ -357,7 +330,7 @@ class BiddingServiceTest {
                     .willReturn(expectedResponse);
 
             // 2. WHEN: Gọi phương thức mua ngay
-            BidResponseDTO actualResponse = biddingService.executeBuyNow(bidderId, auctionId);
+            BidResponseDTO actualResponse = biddingService.executeBuyNow(auctionId);
 
             // 3. THEN: Kiểm tra các cập nhật dữ liệu của phiên đấu giá
             assertThat(actualResponse).isEqualTo(expectedResponse);

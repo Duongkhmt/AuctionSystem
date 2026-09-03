@@ -32,6 +32,9 @@ public class BidValidator {
     // Validate quy tắc khi người mua thực hiện đặt giá cạnh tranh (ENGLISH / RESERVE)
     public void validateBid(User bidder, Auction auction, Optional<Bid> highestBidOpt, BidRequestDTO requestDTO) {
 
+        if (auction.getAuctionType() == AuctionType.BUY_NOW) {
+            throw new ApplicationException(ErrorCode.BUY_NOW_NOT_SUPPORTED);
+        }
         // 👈 Gọi hàm kiểm tra cấm đấu giá ở ngay bước đầu tiên!
         validateBidderNotBanned(bidder);
 

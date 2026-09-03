@@ -25,11 +25,16 @@ import org.springframework.cache.annotation.CacheEvict;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContextHolder;
+
+import com.duong.auction.system.security.UserCustomDetails;
 
 import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
+import java.util.Optional;
 
 
 import com.duong.auction.system.service.engine.RedisAtomicBiddingEngine;
@@ -52,8 +57,8 @@ public class BiddingService {
     private final RedisAtomicBiddingEngine redisEngine;
 
     private User getAuthenticatedUser() {
-        org.springframework.security.core.Authentication auth = org.springframework.security.core.context.SecurityContextHolder.getContext().getAuthentication();
-        if (auth != null && auth.getPrincipal() instanceof com.duong.auction.system.security.UserCustomDetails userCustomDetails) {
+        Authentication auth = SecurityContextHolder.getContext().getAuthentication();
+        if (auth != null && auth.getPrincipal() instanceof UserCustomDetails userCustomDetails) {
             return userCustomDetails.getUser();
         }
         String email = (auth != null) ? auth.getName() : null;
@@ -62,54 +67,48 @@ public class BiddingService {
     }
 
     // =========================================================================
-    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) BẰNG REDIS ATOMIC LUA SCRIPT (ĐƠN GIẢN & TỐI ƯU SIÊU TỐC)
+    // 1. NGHIỆP VỤ ĐẶT GIÁ (BID) KÈM AUTO-BID PROXY BIDDING ĐỀ GIÁ REALTIME
     // =========================================================================
-    @RateLimit(maxRequests = 5, timeWindowSeconds = 10)
-    @CacheEvict(value = "bid_history", key = "#auctionId")
+    @RateLimit(maxRequests = 10, timeWindowSeconds = 10)
+    @CacheEvict(value = {"bid_history", "auctions"}, allEntries = true)
     @Transactional
     public BidResponseDTO placeBid(Long auctionId, BidRequestDTO requestDTO) {
         // 1. Lấy thông tin người đặt giá đang đăng nhập từ SecurityContext
         User bidder = getAuthenticatedUser();
-        Long bidderId = bidder.getId();
 
         Auction auction = auctionRepository.findById(auctionId)
                 .or(() -> auctionRepository.findByProduct_Id(auctionId))
                 .orElseThrow(() -> new ApplicationException(ErrorCode.AUCTION_NOT_FOUND));
 
-        if (auction.getStatus() != com.duong.auction.system.enums.AuctionStatus.RUNNING) {
-            throw new ApplicationException(ErrorCode.AUCTION_NOT_RUNNING);
-        }
+        // 2. Lấy lượt đặt giá cao nhất hiện tại của phiên đấu giá
+        Optional<Bid> highestBidOpt = bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auction.getId());
 
-        // 2. REDIS ATOMIC (LUA SCRIPT): Gộp Đọc -> Kiểm tra -> Cập nhật giá thành 1 thao tác nguyên tử duy nhất trên RAM
-        boolean success = redisEngine.processBidAtomic(
-                auction.getId(),
-                bidderId,
+        // 3. BẮT BUỘC KIỂM TRA QUY TẮC AN TOÀN NGHIỆP VỤ (VALIDATION):
+        // - Giá mới BẮT BUỘC phải lớn hơn hoặc bằng (Giá hiện tại + Bước giá)
+        // - Không cho người bán tự đặt giá sản phẩm do mình đăng bán
+        // - Không cho người đang dẫn đầu giá cao nhất tự đặt giá đè lên chính mình
+        bidValidator.validateBid(bidder, auction, highestBidOpt, requestDTO);
+
+        // 4. Chạy Động Cơ Đấu Giá Tự Động (Proxy Bidding Engine): So kè trần giá giữa các đối thủ & sinh phản công ngầm
+        ProxyBiddingEngineHelper.ProxyBiddingResult result = proxyBiddingEngineHelper.processProxyBidding(
+                auction,
+                bidder,
                 requestDTO.getBidAmount(),
-                auction.getBidStep(),
-                auction.getCurrentPrice()
+                requestDTO.getMaxAutoBidAmount()
         );
 
-        // Request nào trả giá thấp hơn sẽ nhận kết quả "Thua giá" lập tức, 0 bị từ chối do xung đột hệ thống!
-        if (!success) {
-            throw new ApplicationException(ErrorCode.BID_AMOUNT_TOO_LOW);
-        }
+        // 5. Lưu tất cả bản ghi Bid sinh ra (Bid thủ công + Bid tự động phản công) xuống Database
+        bidRepository.saveAll(result.bidsToSave());
 
-        // 3. Nếu thắng giá -> Lưu ngay lượt Bid mới và cập nhật giá phiên đấu giá vào Database
-        Bid bid = new Bid();
-        bid.setAuction(auction);
-        bid.setBidder(bidder);
-        bid.setBidAmount(requestDTO.getBidAmount());
-        bid.setAutoBid(false);
-        bidRepository.save(bid);
-
-        auction.setCurrentPrice(requestDTO.getBidAmount());
+        // 6. Cập nhật mức giá công khai mới nhất cho phiên đấu giá
+        auction.setCurrentPrice(result.newCurrentPrice());
         auctionRepository.save(auction);
 
-        // 4. Trả phản hồi đặt giá thành công cho Client
+        // 7. Trả phản hồi đặt giá thành công cho Client
         return BidResponseDTO.builder()
                 .auctionId(auction.getId())
                 .bidAmount(requestDTO.getBidAmount())
-                .newCurrentPrice(requestDTO.getBidAmount())
+                .newCurrentPrice(result.newCurrentPrice())
                 .build();
     }
 
