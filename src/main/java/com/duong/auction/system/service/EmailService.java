@@ -14,7 +14,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Locale;
 
 /**
- * 📧 SERVICE GỬI EMAIL CHÚC MỪNG THẮNG THẦU & THANH TOÁN (TEXT BLOCK STRING.FORMAT)
+ * 📧 SERVICE GỬI EMAIL CHÚC MỪNG THẮNG THẦU
  */
 @Slf4j
 @Service
@@ -25,9 +25,6 @@ public class EmailService {
 
     @Value("${app.mail.from}")
     private String fromEmail;
-
-    @Value("${app.frontend.public-url}")
-    private String frontendUrlPublic;
 
     public void sendAuctionWinnerEmail(
             String toEmail,
@@ -40,7 +37,6 @@ public class EmailService {
         try {
             String formattedPrice = NumberFormat.getCurrencyInstance(new Locale("vi", "VN")).format(finalPrice);
             String formattedDeadline = paymentDeadline.format(DateTimeFormatter.ofPattern("HH:mm - dd/MM/yyyy"));
-            String checkoutUrl = frontendUrlPublic + "/orders/" + orderId + "/checkout";
 
             String emailBody = String.format("""
                 Chào %s,
@@ -52,10 +48,9 @@ public class EmailService {
                 - Giá Thắng Thầu: %s
                 - Hạn Chót Thanh Toán: %s (Trong vòng 48 tiếng)
 
-                Vui lòng nhấp vào liên kết bên dưới để hoàn tất thanh toán đơn hàng trên hệ thống:
-                %s
+                Vui lòng đăng nhập vào hệ thống Sàn Đấu Giá để kiểm tra đơn hàng và tiến hành thanh toán.
 
-                Lưu ý: Nếu quá hạn 48 tiếng bạn không thanh toán, đơn hàng sẽ tự động bị hủy.
+                Lưu ý: Nếu quá hạn 48 tiếng bạn không thanh toán, đơn hàng sẽ tự động bị hủy theo quy định.
 
                 Trân trọng,
                 Auction System Team
@@ -64,8 +59,7 @@ public class EmailService {
                     productTitle,
                     orderId,
                     formattedPrice,
-                    formattedDeadline,
-                    checkoutUrl
+                    formattedDeadline
             );
 
             SimpleMailMessage message = new SimpleMailMessage();
@@ -76,11 +70,11 @@ public class EmailService {
 
             mailSender.send(message);
 
-            log.info("📧 [Email SUCCESS] Đã gửi thành công Email thông báo trúng thầu cho OrderId: #{}, tới Email: {}",
+            log.info(" [Email SUCCESS] Đã gửi thành công Email thông báo trúng thầu cho OrderId: #{}, tới Email: {}",
                     orderId, toEmail);
 
         } catch (Exception ex) {
-            log.error("🚨 [Email ERROR] Lỗi khi gửi Email cho OrderId: #{}, Email: {}. Detail: {}",
+            log.error(" [Email ERROR] Lỗi khi gửi Email cho OrderId: #{}, Email: {}. Detail: {}",
                     orderId, toEmail, ex.getMessage(), ex);
         }
     }

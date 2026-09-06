@@ -46,21 +46,21 @@ public class AuctionEndedConsumer {
     @KafkaListener(topics = KafkaConfig.TOPIC_AUCTION_ENDED)
     @Transactional
     public void listenAuctionEnded(AuctionEndedEvent event) {
-        log.info("📥 [Kafka Consumer SUCCESS] Nhận sự kiện AUCTION_ENDED cho phiên auctionId: {}, winnerId: {}, finalPrice: {}",
+        log.info("[Kafka Consumer SUCCESS] Nhận sự kiện AUCTION_ENDED cho phiên auctionId: {}, winnerId: {}, finalPrice: {}",
                 event.getAuctionId(),
                 event.getWinnerId(),
                 event.getFinalPrice());
 
         String idempotencyKey = IDEMPOTENT_KEY_PREFIX + event.getEventId();
 
-        // 🟢 BƯỚC 1: READ-ONLY CHECK IDEMPOTENCY
+        //  BƯỚC 1: READ-ONLY CHECK IDEMPOTENCY
         if (Boolean.TRUE.equals(redisTemplate.hasKey(idempotencyKey))) {
-            log.warn("⚠️ [Kafka Consumer IDEMPOTENT] Sự kiện eventId: {} đã xử lý THÀNH CÔNG trước đó. Bỏ qua ghi trùng!",
+            log.warn("[Kafka Consumer IDEMPOTENT] Sự kiện eventId: {} đã xử lý THÀNH CÔNG trước đó. Bỏ qua ghi trùng!",
                     event.getEventId());
             return;
         }
 
-        // 🟢 BƯỚC 2: THỰC THI NGHIỆP VỤ TẠO ĐƠN HÀNG VÀ GỬI EMAIL NGẦM
+        //  BƯỚC 2: THỰC THI NGHIỆP VỤ TẠO ĐƠN HÀNG VÀ GỬI EMAIL NGẦM
         if (event.getWinnerId() != null && !orderRepository.existsByAuction_Id(event.getAuctionId())) {
             Auction auction = auctionRepository.findById(event.getAuctionId()).orElse(null);
             User winner = userRepository.findById(event.getWinnerId()).orElse(null);
@@ -70,7 +70,7 @@ public class AuctionEndedConsumer {
                 order.setPaymentDeadline(LocalDateTime.now(clock).plusHours(48));
                 orderRepository.save(order);
 
-                log.info("🛒 [Kafka Consumer SUCCESS] Đã tạo thành công Đơn hàng ngầm OrderId: {} (paymentDeadline: 48h) cho winnerId: {}",
+                log.info(" [Kafka Consumer SUCCESS] Đã tạo thành công Đơn hàng ngầm OrderId: {} (paymentDeadline: 48h) cho winnerId: {}",
                         order.getId(), winner.getId());
                 // 🟢 GỌI GỬI EMAIL THÔNG BÁO THẮNG THẦU NGẦM QUA KAFKA
                 emailService.sendAuctionWinnerEmail(
@@ -84,7 +84,7 @@ public class AuctionEndedConsumer {
             }
         }
 
-        // 🟢 BƯỚC 3: ĐÁNH DẤU THÀNH CÔNG VÀO REDIS CHỈ KHI NGHIỆP VỤ TẠO ĐƠN HOÀN THÀNH HOÀN HẢO!
+        //  BƯỚC 3: ĐÁNH DẤU THÀNH CÔNG VÀO REDIS CHỈ KHI NGHIỆP VỤ TẠO ĐƠN HOÀN THÀNH HOÀN HẢO!
         redisTemplate.opsForValue().set(idempotencyKey, "PROCESSED", Duration.ofHours(24));
     }
 
@@ -93,7 +93,7 @@ public class AuctionEndedConsumer {
      */
     @DltHandler
     public void handleDltMessage(AuctionEndedEvent event) {
-        log.error("🚨 [KAFKA DLT ALERT] Tin nhắn bị hỏng (Poison Pill) đã bị đẩy vào DLT! " +
+        log.error(" [KAFKA DLT ALERT] Tin nhắn bị hỏng (Poison Pill) đã bị đẩy vào DLT! " +
                         "EventId: {}, AuctionId: {}, WinnerId: {}, Reason: {}. Cần Admin kiểm tra thủ công!",
                 event.getEventId(),
                 event.getAuctionId(),

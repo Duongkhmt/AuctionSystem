@@ -31,7 +31,6 @@ class EmailServiceTest {
     @BeforeEach
     void setUp() {
         ReflectionTestUtils.setField(emailService, "fromEmail", "noreply@auctionsystem.com");
-        ReflectionTestUtils.setField(emailService, "frontendUrlPublic", "http://localhost:4200");
     }
 
     @Test

@@ -54,10 +54,7 @@ class AuctionSchedulerTest {
     private BidRepository bidRepository; // Giả lập tìm lượt thầu cao nhất của phiên hết hạn
 
     @Mock
-    private OrderRepository orderRepository; // Giả lập kiểm tra và lưu đơn hàng trúng thầu
-
-    @Mock
-    private OrderMapper orderMapper; // Giả lập chuyển đổi Auction + Winner sang Order Entity
+    private OrderRepository orderRepository; // Giả lập kiểm tra quét đơn UNPAID quá 48h
 
     @Mock
     private Clock clock; // Giả lập đồng hồ hệ thống
@@ -127,7 +124,6 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(500000));
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot kích hoạt tiến trình quét định kỳ processAuctionStatusTransitions
             auctionScheduler.processAuctionStatusTransitions();
@@ -151,7 +147,6 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(800000)); // 800k < 1M
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot thực thi quét
             auctionScheduler.processAuctionStatusTransitions();
@@ -173,7 +168,6 @@ class AuctionSchedulerTest {
             highestBid.setBidAmount(BigDecimal.valueOf(1200000)); // 1.2M >= 1M
 
             given(bidRepository.findHighestBidsByAuctionIdIn(any())).willReturn(List.of(highestBid));
-            given(auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED)).willReturn(List.of());
 
             // 2. WHEN: Robot chạy quét
             auctionScheduler.processAuctionStatusTransitions();

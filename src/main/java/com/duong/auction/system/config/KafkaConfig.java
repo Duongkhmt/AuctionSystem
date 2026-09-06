@@ -38,7 +38,10 @@ public class KafkaConfig {
     public static final String TOPIC_AUCTION_ENDED = "auction.events.ended";
 
     /**
-     * Tự động khởi tạo Topic chính "auction.events.ended" với 3 Partitions trên Kafka Broker
+     * 1. TỰ ĐỘNG KHỞI TẠO TOPIC CHÍNH TRÊN KAFKA BROKER
+     *
+     * Khởi tạo Topic "auction.events.ended" với 3 Partitions để cho phép 3 Worker Consumer
+     * xử lý song song, giúp tối ưu hiệu năng khi có hàng ngàn phiên đấu giá cùng hết hạn.
      */
     @Bean
     public NewTopic auctionEndedTopic() {
@@ -46,9 +49,12 @@ public class KafkaConfig {
                 .partitions(3)
                 .build();
     }
-
     /**
-     * Khởi tạo ProducerFactory tường minh cho Kafka Producer
+     * 2. CẤU HÌNH PRODUCER FACTORY (BÊN GỬI TIN NHẮN)
+     *
+     * Định nghĩa cách mã hóa dữ liệu trước khi bắn qua mạng:
+     * - Key: Chuỗi String (AuctionId)
+     * - Value: Đóng gói đối tượng Java (AuctionEndedEvent) thành chuỗi JSON String
      */
     @Bean
     public ProducerFactory<Object, Object> producerFactory() {
@@ -60,7 +66,8 @@ public class KafkaConfig {
     }
 
     /**
-     * Khai báo Bean KafkaTemplate tường minh cho Spring Boot Inject
+     * 3. KHỞI TẠO KAFKATEMPLATE
+     * Công cụ làm việc chính của Spring Kafka cung cấp hàm .send() để Producer phát thông điệp lên Broker.
      */
     @Bean
     public KafkaTemplate<Object, Object> kafkaTemplate() {
@@ -68,7 +75,11 @@ public class KafkaConfig {
     }
 
     /**
-     * Khởi tạo ConsumerFactory tường minh cho Kafka Consumer
+     * 4. CẤU HÌNH CONSUMER FACTORY (BÊN NHẬN TIN NHẮN)
+     *
+     * Định nghĩa cách giải mã dữ liệu nhận về từ Kafka:
+     * - GROUP_ID: "auction-service-group" định danh nhóm người đọc.
+     * - Value Deserializer: Tự động chuyển chuỗi JSON String trở lại thành đối tượng Java AuctionEndedEvent.
      */
     @Bean
     public ConsumerFactory<Object, Object> consumerFactory() {
@@ -82,7 +93,9 @@ public class KafkaConfig {
     }
 
     /**
-     * Khai báo ListenerContainerFactory tường minh cho @KafkaListener & Retry Topic
+     * 5. KHỞI TẠO LISTENER CONTAINER FACTORY
+     *
+     * Cung cấp bộ Container quản lý vòng đời cho annotation @KafkaListener và xử lý Retry Topic ngầm.
      */
     @Bean
     public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory() {
@@ -92,18 +105,36 @@ public class KafkaConfig {
     }
 
     /**
-     * 🔥 CẤU HÌNH NON-BLOCKING RETRY TOPIC & DLT DUY NHẤT
+     * 6.  CẤU HÌNH CHI TIẾT NON-BLOCKING RETRY TOPIC & DEAD LETTER TOPIC (DLT)
+     *
+     * LUỒNG DIỄN BIẾN THỜI GIAN KHI 1 TIN NHẮN BỊ LỖI (Ví dụ: DB Timeout):
+     * - [Lần 1]: Consumer đọc từ "auction.events.ended" -> Bị nổ Exception -> Không chặn luồng chính,
+     *            đẩy tin nhắn sang Topic trung gian "auction.events.ended-retry".
+     * - [Chờ 2 giây]: Tính theo fixedBackOff(2000L).
+     * - [Lần 2]: Consumer đọc lại tin nhắn từ "-retry" -> Vẫn bị lỗi -> Đẩy lại vào chính Topic "-retry".
+     * - [Chờ 2 giây].
+     * - [Lần 3]: Consumer đọc lại lần cuối -> Vẫn lỗi -> Hết 3 lượt thử (maxAttempts(3)).
+     * - [Kết thúc]: Tin nhắn bị coi là "Poison Pill" -> Đẩy vào DLT "auction.events.ended-dlt".
+     *               Hàm @DltHandler được kích hoạt để log cảnh báo cho Admin kiểm tra thủ công.
      */
     @Bean
     public RetryTopicConfiguration auctionEndedRetryTopicConfig(KafkaTemplate<Object, Object> kafkaTemplate) {
         return RetryTopicConfigurationBuilder
                 .newInstance()
+                // 1. Tổng số lần được thử xử lý tin nhắn (bao gồm lần đầu tiên). Quá 3 lần coi là thất bại vĩnh viễn.
                 .maxAttempts(3)
+                // 2. Khoảng thời gian chờ cố định giữa các lần thử lại = 2000ms (2 giây).
                 .fixedBackOff(2000L)
+                // 3. Tối ưu Topic: Vì dùng thời gian chờ cố định (2s), nên cả 3 lần thử đều dùng chung 1 Topic "-retry",
+                //    tránh việc Spring tự tạo ra nhiều Topic riêng lẻ (như -retry-0, -retry-1) gây lãng phí tài nguyên.
                 .sameIntervalTopicReuseStrategy(SameIntervalTopicReuseStrategy.SINGLE_TOPIC)
+                // 4. Quy ước hậu tố đặt tên Topic tự động: "auction.events.ended-retry" và "auction.events.ended-dlt".
                 .retryTopicSuffix("-retry")
                 .dltSuffix("-dlt")
+                // 5. Chỉ định cấu hình Retry/DLT này chỉ áp dụng riêng cho Topic "auction.events.ended".
                 .includeTopic(TOPIC_AUCTION_ENDED)
+                // 6. Xử lý lỗi nghiêm trọng: Nếu chính hàm @DltHandler cũng bị lỗi khi chạy thì văng lỗi rõ ràng,
+                //    không được âm thầm nuốt lỗi để tránh làm biến mất tin nhắn mà không ai hay biết.
                 .dltProcessingFailureStrategy(DltStrategy.FAIL_ON_ERROR)
                 .create(kafkaTemplate);
     }

@@ -25,7 +25,7 @@ public class AuctionKafkaProducer {
      * Bổ sung CompletableFuture callback xác nhận kết quả gửi bất đồng bộ!
      */
     public void sendAuctionEndedEvent(AuctionEndedEvent event) {
-        log.info("🚀 [Kafka Producer] Đang gửi sự kiện AUCTION_ENDED lên Kafka. AuctionId: {}, WinnerId: {}",
+        log.info("[Kafka Producer] Đang gửi sự kiện AUCTION_ENDED lên Kafka. AuctionId: {}, WinnerId: {}",
                 event.getAuctionId(), event.getWinnerId());
         // 👉 GỌI HÀM SEND CỦA SPRING KAFKA TEMPLATE
         CompletableFuture<SendResult<Object, Object>> future = kafkaTemplate.send(
@@ -37,13 +37,13 @@ public class AuctionKafkaProducer {
         // Bắt callback xác nhận kết quả gửi ngầm từ Kafka Broker
         future.whenComplete((result, ex) -> {
             if (ex == null) {
-                log.info("✅ [Kafka Producer SUCCESS] Đã gửi thành công AuctionId: {} vào Topic: {}, Partition: {}, Offset: {}",
+                log.info(" [Kafka Producer SUCCESS] Đã gửi thành công AuctionId: {} vào Topic: {}, Partition: {}, Offset: {}",
                         event.getAuctionId(),
                         result.getRecordMetadata().topic(),
                         result.getRecordMetadata().partition(),
                         result.getRecordMetadata().offset());
             } else {
-                log.error("❌ [Kafka Producer ERROR] Gửi thất bại sự kiện AuctionId: {} lên Kafka! Nguyên nhân: {}",
+                log.error(" [Kafka Producer ERROR] Gửi thất bại sự kiện AuctionId: {} lên Kafka! Nguyên nhân: {}",
                         event.getAuctionId(), ex.getMessage(), ex);
             }
         });

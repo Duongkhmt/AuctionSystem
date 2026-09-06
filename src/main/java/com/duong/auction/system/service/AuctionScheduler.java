@@ -8,7 +8,6 @@ import com.duong.auction.system.enums.AuctionStatus;
 import com.duong.auction.system.enums.AuctionType;
 import com.duong.auction.system.enums.OrderStatus;
 import com.duong.auction.system.enums.ProductStatus;
-import com.duong.auction.system.mapper.OrderMapper;
 import com.duong.auction.system.repository.AuctionRepository;
 import com.duong.auction.system.repository.BidRepository;
 import com.duong.auction.system.repository.OrderRepository;
@@ -42,7 +41,6 @@ public class AuctionScheduler {
     private final BidRepository bidRepository;
     private final OrderRepository orderRepository;
     private final UserRepository userRepository;
-    private final OrderMapper orderMapper;
     private final AuctionEndedSettlementHelper settlementHelper;
     private final Clock clock;
 
@@ -72,14 +70,11 @@ public class AuctionScheduler {
         // 3. Tự động chốt Winner và bắn sự kiện Kafka AUCTION_ENDED bất đồng bộ
         processEndedAuctions(now);
 
-        // 4. Backfill Self-Healing: Bổ sung Đơn hàng cho các phiên ENDED có Winner bị thiếu đơn
-        backfillMissingOrders(now);
-
-        // 5. Tự động quét hủy các đơn UNPAID quá 48h & Phạt Gậy Vi Phạm / Khóa 90 ngày nếu bùng 3 lần
+        // 4. Tự động quét hủy các đơn UNPAID quá 48h & Phạt Gậy Vi Phạm / Khóa 90 ngày nếu bùng 3 lần
         processExpiredUnpaidOrders(now);
     }
 
-    // Xử lý chốt Winner và bắn sự kiện Kafka cho các phiên đến giờ kết thúc (< 2ms)
+    // Xử lý chốt Winner và bắn sự kiện Kafka cho các phiên đến giờ kết thúc
     private void processEndedAuctions(LocalDateTime now) {
         List<Auction> endedAuctions = auctionRepository
                 .findByStatusAndAuctionTypeNotAndEndTimeLessThanEqual(AuctionStatus.RUNNING, AuctionType.BUY_NOW, now);
@@ -95,23 +90,7 @@ public class AuctionScheduler {
                 // 🟢 Gọi qua Injected Spring Bean Proxy -> Kích hoạt @Transactional(REQUIRES_NEW) 100%!
                 settlementHelper.processSingleAuctionEnded(auction, highestBid, now);
             } catch (Exception e) {
-                log.error("❌ Lỗi xử lý chốt thầu độc lập cho AuctionId: {}. Bỏ qua phiên này!", auction.getId(), e);
-            }
-        }
-    }
-
-    // Tự động bổ sung Đơn hàng bị khuyết cho các phiên ENDED có Winner
-    private void backfillMissingOrders(LocalDateTime now) {
-        List<Auction> endedWithWinnerAuctions = auctionRepository.findByStatusAndWinnerIsNotNull(AuctionStatus.ENDED);
-        for (Auction auction : endedWithWinnerAuctions) {
-            if (!orderRepository.existsByAuction_Id(auction.getId())) {
-                Optional<Bid> highestBidOpt = bidRepository
-                        .findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc(auction.getId());
-                BigDecimal winningPrice = highestBidOpt.map(Bid::getBidAmount).orElse(auction.getCurrentPrice());
-
-                Order order = orderMapper.toEntity(auction, auction.getWinner(), winningPrice);
-                order.setPaymentDeadline(now.plusHours(48));
-                orderRepository.save(order);
+                log.error(" Lỗi xử lý chốt thầu độc lập cho AuctionId: {}. Bỏ qua phiên này!", auction.getId(), e);
             }
         }
     }
