@@ -121,21 +121,39 @@ Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 1
 
 ---
 
-# 📊 BẢNG TỔNG HỢP SO SÁNH 3 TRỤ CỘT REDIS
+# 🔴 PHẦN 4: REDIS USER SESSION & STATUS CACHE (BỘ BẢO VỆ PHIÊN & TRẠNG THÁI NGUỜI DÙNG)
+
+### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
+Đóng vai trò là **"Bộ Đệm Kiểm Tra Quyền Siêu Tốc 0ms SQL"** kiểm soát trạng thái tài khoản và mốc đăng xuất gần nhất:
+
+1. **`user:status:{email}` (TTL = 3 ngày):**
+   - *Tác dụng:* Cache trạng thái `ACTIVE` hoặc `BANNED`. Nếu `BANNED` ➔ Filter từ chối ngay HTTP 403 mà không cần query DB.
+2. **`user:logout_at:{email}` (TTL = 3 ngày):**
+   - *Tác dụng:* Lưu mốc timestamp đăng xuất gần nhất. Nếu `tokenIssuedAt < (lastLogoutAt - 1000ms)` ➔ Filter từ chối ngay HTTP 401.
+
+### 🔄 Mô hình Cache-Aside & DB Fallback (Theo chỉ đạo Tech Lead):
+- **PostgreSQL là Single Source of Truth**: Lưu dữ liệu vĩnh viễn.
+- **Redis làm Cache ngắn hạn**: Không lưu vĩnh viễn bất kỳ Key nào.
+- **Fallback DB khi Cache Miss**: Nếu Redis bị xoá data, hết hạn TTL hoặc restart, Filter tự động fallback query PostgreSQL `loadUserByUsername` và kiểm tra status trực tiếp từ CSDL.
+
+---
+
+# 📊 BẢNG TỔNG HỢP SO SÁNH 4 TRỤ CỘT REDIS
 
 ```
-+-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
-| TIÊU CHÍ          | 1. REDIS CACHING                  | 2. REDIS RATE LIMITING            | 3. REDIS DISTRIBUTED LOCK         |
-+-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
-| 🎯 Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    |
-| 🔑 Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | lock:auction:101                  |
-| ⚙️ Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Redisson RLock Facade + Supplier  |
-| 🛡️ Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Bảo vệ Tính Đúng Đắn Dữ Liệu DB   |
-| 💥 Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | Bid trùng giá, đẻ 2 đơn hàng      |
-+-------------------+-----------------------------------+-----------------------------------+-----------------------------------+
++-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
+| TIÊU CHÍ          | 1. REDIS CACHING                  | 2. REDIS RATE LIMITING            | 3. REDIS DISTRIBUTED LOCK         | 4. REDIS USER SESSION & STATUS    |
++-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
+| 🎯 Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    | Từng Email người dùng             |
+| 🔑 Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | lock:auction:101                  | user:status:a@gmail.com           |
+| ⚙️ Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Redisson RLock Facade + Supplier  | OncePerRequestFilter + Cache-Aside|
+| 🛡️ Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Bảo vệ Tính Đúng Đắn Dữ Liệu DB   | Bảo vệ Session & Thu hồi Token    |
+| 💥 Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | Bid trùng giá, đẻ 2 đơn hàng      | Tràn RAM Redis do lưu Token rác   |
++-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
 ```
 
 ---
 
 ### 🎯 TÓM LẠI:
-Nhờ sự phối hợp nhịp nhàng của **3 Lớp Redis** (Caching $\rightarrow$ Rate Limiting $\rightarrow$ Distributed Lock), hệ thống Đấu Giá `DuAnTrainning` của bạn đã đạt tới đẳng cấp của một **Hệ Thống Doanh Nghiệp Chịu Tải Cao (High-Throughput Enterprise System)**: Vừa chạy siêu tốc 1-2ms, vừa chống spam bot hiệu quả, vừa đảm bảo tính toàn vẹn dữ liệu DB 100%!
+Nhờ sự phối hợp nhịp nhàng của **4 Lớp Redis** (Caching $\rightarrow$ Rate Limiting $\rightarrow$ Distributed Lock $\rightarrow$ User Session & Status Cache), hệ thống Đấu Giá `DuAnTrainning` của bạn đạt tới đẳng cấp của một **Hệ Thống Doanh Nghiệp Chịu Tải Cao (High-Throughput Enterprise System)**: Vừa chạy siêu tốc 1-2ms, vừa chống spam bot hiệu quả, vừa thu hồi token thông minh tối ưu RAM, vừa đảm bảo tính toàn vẹn dữ liệu DB 100%!
+

@@ -76,18 +76,27 @@ public class JwtTokenProvider {
             Jwts.parserBuilder().setSigningKey(cachedSecretKey).build().parseClaimsJws(token);
             return true;
         } catch (SignatureException ex) {
-            // 🚨 Cảnh báo bảo mật quan trọng: Dấu hiệu kẻ xấu cố tình giả mạo Token
-            log.error("🚨 CHỮ KÝ JWT KHÔNG HỢP LỆ: Token có dấu hiệu bị giả mạo!");
+            //  Cảnh báo bảo mật quan trọng: Dấu hiệu kẻ xấu cố tình giả mạo Token
+            log.error(" CHỮ KÝ JWT KHÔNG HỢP LỆ: Token có dấu hiệu bị giả mạo!");
         } catch (MalformedJwtException ex) {
-            log.warn("⚠️ Chuỗi JWT không đúng cấu trúc định dạng!");
+            log.warn("⚠Chuỗi JWT không đúng cấu trúc định dạng!");
         } catch (ExpiredJwtException ex) {
-            // ℹ️ Hết hạn 10 phút là sự kiện tự nhiên: Chuyển sang log.info để KHÔNG LÀM RÁC LOG SERVER
-            log.info("ℹ️ JWT Token đã hết hạn tự nhiên (Quá thời hạn 10 phút).");
+            // hết hạn 10 phút là sự kiện tự nhiên: Chuyển sang log.info để KHÔNG LÀM RÁC LOG SERVER
+            log.info(" JWT Token đã hết hạn tự nhiên (Quá thời hạn 10 phút).");
         } catch (UnsupportedJwtException ex) {
-            log.warn("⚠️ JWT Token không được hỗ trợ!");
+            log.warn(" JWT Token không được hỗ trợ!");
         } catch (IllegalArgumentException ex) {
-            log.warn("⚠️ Chuỗi JWT rỗng hoặc chứa khoảng trắng!");
+            log.warn(" Chuỗi JWT rỗng hoặc chứa khoảng trắng!");
         }
         return false;
+    }
+
+    public Date getIssuedAtFromToken(String token) {
+        Claims claims = Jwts.parserBuilder()
+                .setSigningKey(cachedSecretKey)
+                .build()
+                .parseClaimsJws(token)
+                .getBody();
+        return claims.getIssuedAt();
     }
 }

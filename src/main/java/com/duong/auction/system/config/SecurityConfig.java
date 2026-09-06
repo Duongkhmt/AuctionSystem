@@ -84,6 +84,7 @@ public class SecurityConfig {
                     .authorizeHttpRequests(auth -> auth
                             // 🟢 1. PUBLIC ENDPOINTS (Cho phép tất cả khách chưa đăng nhập truy cập)
                             .requestMatchers("/v1/auth/**").permitAll()
+                            .requestMatchers("/v1/test/**").permitAll()
                             .requestMatchers(HttpMethod.GET, "/v1/products/**").permitAll()
                             .requestMatchers(HttpMethod.GET, "/v1/auctions/**").permitAll()
                             .requestMatchers(HttpMethod.GET, "/v1/categories/**").permitAll()

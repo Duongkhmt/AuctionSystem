@@ -10,5 +10,6 @@ public final class SecurityConstants {
     // 🟢 TIỀN TỐ REDIS KEYS BẢO MẬT
     public static final String REFRESH_TOKEN_KEY_PREFIX = "refresh_token:";
     public static final String REFRESH_TOKEN_USER_KEY_PREFIX = "refresh_token_user:";
-    public static final String BLACKLIST_TOKEN_KEY_PREFIX = "blacklist_token:";
+    public static final String USER_LOGOUT_AT_KEY_PREFIX = "user:logout_at:";
+    public static final String USER_STATUS_KEY_PREFIX = "user:status:";
 }

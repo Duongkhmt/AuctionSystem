@@ -40,6 +40,9 @@ public class User {
     @Column(nullable = false, length = 20)
     private UserStatus status; // 👈 Set tường minh ở Service/Mapper, không gán mặc định ở đây!
 
+    @Column(name = "last_logout_at")
+    private LocalDateTime lastLogoutAt;
+
     @Column(name = "created_at", nullable = false, updatable = false)
     private LocalDateTime createdAt = LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE);
 }

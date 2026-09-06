@@ -1,5 +1,6 @@
 package com.duong.auction.system.service;
 
+import com.duong.auction.system.config.DateTimeConfig;
 import com.duong.auction.system.config.SecurityConstants;
 import com.duong.auction.system.dto.request.LoginRequestDTO;
 import com.duong.auction.system.dto.request.RefreshTokenRequestDTO;
@@ -27,6 +28,7 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 
@@ -92,6 +94,7 @@ public class AuthService {
 
         redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + request.getEmail(), refreshToken, refreshExpirationDays, TimeUnit.DAYS);
         redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + refreshToken, request.getEmail(), refreshExpirationDays, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(SecurityConstants.USER_STATUS_KEY_PREFIX + request.getEmail(), user.getStatus().name(), refreshExpirationDays, TimeUnit.DAYS);
 
         return userMapper.toUserResponseDTO(user, accessToken, refreshToken);
     }
@@ -145,15 +148,20 @@ public class AuthService {
         String authHeader = request.getHeader(SecurityConstants.HEADER_AUTHORIZATION);
 
         if (authHeader != null && authHeader.startsWith(SecurityConstants.TOKEN_PREFIX)) {
-            String accessToken = authHeader.substring(SecurityConstants.TOKEN_PREFIX.length());
-
             String refreshToken = redisTemplate.opsForValue().get(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
             if (refreshToken != null) {
                 redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
                 redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + refreshToken);
             }
+            long currentTimestamp = System.currentTimeMillis();
+            redisTemplate.opsForValue().set(SecurityConstants.USER_LOGOUT_AT_KEY_PREFIX + email, String.valueOf(currentTimestamp), refreshExpirationDays, TimeUnit.DAYS);
 
-            redisTemplate.opsForValue().set(SecurityConstants.BLACKLIST_TOKEN_KEY_PREFIX + accessToken, "invalidated", 10, TimeUnit.MINUTES);
+            User user = userRepository.findByEmail(email).orElse(null);
+            if (user != null) {
+                user.setLastLogoutAt(LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE));
+                userRepository.save(user);
+            }
+
             SecurityContextHolder.clearContext();
             log.info("Đã đăng xuất thành công cho tài khoản Email: {}", email);
         }

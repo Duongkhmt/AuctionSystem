@@ -18,7 +18,7 @@ import java.util.List;
 @AllArgsConstructor
 public class UserCustomDetails implements UserDetails {
 
-    private final User user; // Chứa Entity User gốc từ CSDL
+    private final transient User user; // Chứa Entity User gốc từ CSDL
 
     // 🟢 1. Chuyển đổi UserRole (USER / ADMIN) sang GrantedAuthority ("ROLE_USER", "ROLE_ADMIN")
     @Override

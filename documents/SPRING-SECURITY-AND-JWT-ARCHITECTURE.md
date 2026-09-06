@@ -1,146 +1,153 @@
-# DOCUMENTATION: KIẾN TRÚC BẢO MẬT API & PHÂN QUYỀN TẬP TRUNG (SPRING SECURITY & JWT)
+# DOCUMENTATION: KIẾN TRÚC BẢO MẬT SYSTEM, JWT & QUẢN LÝ PHIÊN REDIS TỐI ƯU
 
 **Dự án:** Hệ thống Đấu giá Trực tuyến (`DuAnTrainning`)  
-**Mục tiêu:** Chuyển đổi toàn bộ API sang cơ chế Stateless Authentication bằng JSON Web Token (JWT) kết hợp Phân quyền dựa trên vai trò (Role-Based Access Control - RBAC).
+**Tác giả:** Duongkhmt  
+**Phạm vi:** Tài liệu Quy chuẩn Kiến trúc Bảo mật, Nghiệp vụ Xác thực & Giải pháp Tối ưu Bộ nhớ RAM.
 
 ---
 
-## 1. TỔNG QUAN NGUYÊN LÝ BẢO MẬT SYSTEM
+## 📑 MỤC LỤC
+1. [NGUYÊN TẮC & NGUYÊN LÝ BẢO MẬT HỆ THỐNG](#1-nguyên-tắc--nguyên-lý-bảo-mật-hệ-thống)
+2. [GIẢI PHÁP TỔNG THỂ & SƠ ĐỒ LUỒNG XÁC THỰC](#2-giải-pháp-tổng-thể--sơ-đồ-luồng-xác-thực)
+3. [QUY TẮC VÒNG ĐỜI TOKEN & THÔNG SỐ REDIS KEYS](#3-quy-tắc-vòng-đời-token--thông-số-redis-keys)
+4. [CHI TIẾT CÁC LUỒNG NGHIỆP VỤ (END-TO-END BUSINESS FLOWS)](#4-chi-tiết-các-luồng-nghiệp-vụ-end-to-end-business-flows)
+5. [QUY CHUẨN XỬ LÝ EDGE CASES & ĐÓNG GÓI LỖI](#5-quy-chuẩn-xử-lý-edge-cases--đóng-gói-lỗi)
+6. [BẢNG MAPPING THÀNH PHẦN HỆ THỐNG (COMPONENT SPECIFICATION)](#6-bảng-mapping-thành-phần-hệ-thống-component-specification)
+
+---
+
+## 1. NGUYÊN TẮC & NGUYÊN LÝ BẢO MẬT HỆ THỐNG
+
+Hệ thống Đấu giá Trực tuyến vận hành theo mô hình kiến trúc bảo mật **Stateless Authentication (JWT)** kết hợp **Redis Cache-Aside** và **PostgreSQL Single Source of Truth**:
+
+### 1.1. PostgreSQL là Nguồn Sự Thật Duy Nhất (Single Source of Truth)
+- CSDL PostgreSQL chịu trách nhiệm lưu trữ vĩnh viễn và chính xác tuyệt đối thông tin người dùng, mật khẩu đã băm và trạng thái tài khoản (`ACTIVE`, `BANNED`).
+
+### 1.2. Redis đóng vai trò Cache-Aside (Không lưu dữ liệu vĩnh viễn)
+- Bộ nhớ đệm RAM Redis chỉ lưu các Key hỗ trợ tăng tốc kiểm tra quyền với thời gian sống có hạn (**TTL 3 ngày**).
+- **Tuyệt đối không lưu từng chuỗi token rác (`blacklist_token:*`)** để tối ưu hóa bộ nhớ RAM Redis và không ảnh hưởng tới hạ tầng chung.
+- **Cơ chế Fallback DB**: Khi Redis bị trống dữ liệu (do hết hạn TTL, cache bị xóa hoặc Redis restart), Filter tự động **Fallback truy vấn PostgreSQL CSDL** để xác thực, đảm bảo hệ thống vận hành an toàn 100% không phụ thuộc vĩnh viễn vào Redis.
+
+---
+
+## 2. GIẢI PHÁP TỔNG THỂ & SƠ ĐỒ LUỒNG XÁC THỰC
 
 ```
-[ Client / Angular UI / Postman ]
-               │
-               │ HTTP Request (Header: Authorization: Bearer <JWT_TOKEN>)
-               ▼
-   [ Tomcat Servlet Container ]
-               │
-               ▼
-     [ DelegatingFilterProxy ]
-               │
-               ▼
-    [ Spring Security Filter Chain ]
-    ├── CorsFilter (Cấu hình CORS cho phép Frontend truy cập)
-    ├── csrf.disable() (Tắt CSRF vì sử dụng Stateless JWT Header)
-    ├── 🛡️ JwtAuthenticationFilter (Giải mã & Validate Token 10 phút)
-    └── FilterSecurityInterceptor (Kiểm tra Phân quyền Route ROLE_USER / ROLE_ADMIN)
-               │
-               ▼ (Nếu Hợp Lệ)
-      [ DispatcherServlet ] ➔ [ RestController ]
+                     +---------------------------------------+
+                     |       HTTP Request (Bearer JWT)       |
+                     +---------------------------------------+
+                                         │
+                                         ▼
+                     +---------------------------------------+
+                     |       JwtAuthenticationFilter         |
+                     +---------------------------------------+
+                                         │
+                    1. Validate JWT Signature & Expiration
+                                         │
+                                         ▼
+                 +-----------------------------------------------+
+                 | Check 1: Redis `user:status:{email}`          |
+                 +-----------------------------------------------+
+                  ├── Cache Hit: Status = BANNED ─────────────► [ HTTP 403 Forbidden ] (USER_BANNED_FROM_BIDDING)
+                  └── Cache Miss / Status = ACTIVE
+                                         │
+                                         ▼
+                 +-----------------------------------------------+
+                 | Check 2: Redis `user:logout_at:{email}`       |
+                 +-----------------------------------------------+
+                  ├── Cache Hit: iat < (lastLogoutAt - 1000ms) ──► [ HTTP 401 Unauthorized ] (UNAUTHENTICATED)
+                  └── Cache Miss / Token Valid
+                                         │
+                                         ▼
+                 +-----------------------------------------------+
+                 | Fallback DB: CustomUserDetailsService         |
+                 +-----------------------------------------------+
+                  ├── DB Status = BANNED ─────────────────────► [ HTTP 403 Forbidden ] (DisabledException)
+                  └── DB Status = ACTIVE
+                                         │
+                                         ▼
+                 +-----------------------------------------------+
+                 | Set SecurityContextHolder & Re-cache Redis    |
+                 +-----------------------------------------------+
 ```
 
 ---
 
-## 2. QUY TẮC ĐỊNH DANH & QUẢN LÝ VÒNG ĐỜI TOKEN
+## 3. QUY TẮC VÒNG ĐỜI TOKEN & THÔNG SỐ REDIS KEYS
 
-### 2.1. Định Danh Đăng Nhập Duy Nhất bằng EMAIL
-- **Email**: Là định danh duy nhất (`unique = true`) được sử dụng để Đăng Nhập và Xác Thực người dùng (`userRepository.findByEmail(email)`).
-- **Username**: Được sử dụng cho mục đích hiển thị tên người dùng public hoặc mã hóa tên ẩn danh trên sàn đấu giá (ví dụ: `d***g`), **KHÔNG** dùng để đăng nhập.
-
-### 2.2. Thời Gian Sống Của Access Token (10 Phút)
-- Cấu hình trong `application.properties`: `app.jwt.expiration-ms=600000` (10 Phút).
-- **Lý do thiết kế:** Đảm bảo mức độ an toàn tối cao. Nếu lỡ lộ Token, chuỗi JWT sẽ tự động biến thành "giấy lộn" sau 10 phút.
-
-### 2.3. Cơ Chế Cặp Token (Access Token 10 Phút & Refresh Token 7 Ngày)
-Để khắc phục rủi ro người dùng bị gián đoạn khi đang tham gia đấu giá dồn dập (UX):
-- **Access Token (10 Phút)**: Dùng để đính kèm vào Header `Authorization: Bearer <TOKEN>` cho mỗi Request.
-- **Refresh Token (7 Ngày)**: Được lưu an toàn dưới `HttpOnly Cookie` (chống XSS) hoặc lưu trong Redis (`refresh_token:<userId>`).
-- **Endpoint `/v1/auth/refresh`**: Phía Frontend Angular (HttpInterceptor) tự động phát hiện Access Token còn 1 phút nữa hết hạn ➔ Gọi ngầm endpoint này xin Access Token 10 phút mới mà **KHÔNG bắt người dùng phải đăng nhập lại**.
-
----
-
-## 3. MÔ HÌNH PHÂN QUYỀN RBAC (USER_ROLE ENUM)
-
-Hệ thống được thiết kế tối giản và linh hoạt theo đúng [UserRole.java](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/enums/UserRole.java):
-
-```
-                       ┌──> Vai trò 1: Bidder (Đặt giá, Mua ngay, Thanh toán)
-┌──> ROLE_USER ────────┤
-│                      └──> Vai trò 2: Seller (Đăng bài sản phẩm, Giao hàng)
-│
-└──> ROLE_ADMIN ──────────> Quản trị viên (Duyệt/Từ chối bài, Khóa phiên, Duyệt danh mục)
-```
-
-1. **`ROLE_USER`**: Đóng song song 2 vai trò linh hoạt:
-   - **Bidder / Buyer**: Được phép đặt giá (`POST /v1/auctions/*/bids`), mua ngay (`POST /v1/auctions/*/buy-now`), thanh toán đơn hàng.
-   - **Seller**: Được phép đăng bán sản phẩm (`POST /v1/products`), chỉnh sửa bài, giao hàng.
-2. **`ROLE_ADMIN`**: Quản trị viên hệ thống:
-   - Được phép phê duyệt/từ chối sản phẩm (`PUT /v1/admin/products/*/approve`), khóa phiên đấu giá, phạt gậy vi phạm bùng đơn, quản lý danh mục (`POST /v1/categories`).
-
----
-
-## 4. BỘ THÀNH PHẦN MÃ NGUỒN CỐT LÕI
-
-| STT | Tên Class / Component | Đường dẫn File | Nhiệm vụ chính |
+### 3.1. Thông số Kỹ thuật Token
+| Loại Token | Thời gian sống (TTL) | Lưu trữ phía Client | Mục đích sử dụng |
 |---|---|---|---|
-| 1 | `UserRepository` | `repository/UserRepository.java` | Khai báo `Optional<User> findByEmail(String email)` |
-| 2 | `UserCustomDetails` | `security/UserCustomDetails.java` | Cầu nối giữa Entity `User` với `UserDetails` của Spring Security |
-| 3 | `CustomUserDetailsService` | `security/CustomUserDetailsService.java` | Truy vấn `User` theo Email từ DB, tái sử dụng `ErrorCode.USER_NOT_FOUND` |
-| 4 | `JwtTokenProvider` | `security/JwtTokenProvider.java` | Sinh Token 10 phút, Giải mã Email và Validate chữ ký HMAC-SHA256 |
-| 5 | `JwtAuthenticationFilter` | `security/JwtAuthenticationFilter.java` | Custom Filter kế thừa `OncePerRequestFilter` nạp Authentication |
-## 4. TÍCH HỢP TỰ ĐỘNG XÁC THỰC VÀ BẢO BẢO NGUYÊN TẮC RESTFUL (/me)
+| **Access Token** | 10 Phút (`600.000ms`) | LocalStorage / Memory | Đính kèm vào Header `Authorization: Bearer <TOKEN>` cho mỗi HTTP Request |
+| **Refresh Token** | 3 Ngày (`3 Days`) | HttpOnly Cookie / LocalStorage | Dùng để xin cặp Token mới khi Access Token hết hạn (Refresh Token Rotation) |
 
-Hệ thống đã hoàn tất refactor 100% các Controller tính năng để triệt tiêu hoàn toàn lỗ hổng bảo mật BOLA / IDOR:
-
-### 4.1. Seller Studio (`/v1/sellers/me`)
-- **`GET /v1/sellers/me/products`**: Truy vấn danh sách sản phẩm do chính Người Bán đang đăng nhập tạo ra.
-- **`POST /v1/sellers/me/products`**: Đăng bài bán sản phẩm mới (Tự động gán chính chủ Seller).
-- **`PUT /v1/sellers/me/products/{id}`**: Sửa bài đăng chính chủ.
-- **`DELETE /v1/sellers/me/products/{id}`**: Xóa bài đăng chính chủ + dọn dẹp ảnh Cloudinary.
-- **`PUT /v1/sellers/me/products/{id}/cancel`**: Hủy bài đăng chính chủ khi chưa có bid.
-- **`POST /v1/sellers/me/products/{auctionId}/relist`**: Đăng lại phiên hết hạn chính chủ.
-- **`GET /v1/sellers/me/orders`**: Xem danh sách đơn bán của chính mình.
-- **`PUT /v1/sellers/me/orders/{orderId}/ship`**: Điền mã vận đơn và xuất hàng chính chủ.
-
-### 4.2. Bidder Portal (`/v1/bidders/me`)
-- **`GET /v1/bidders/me/won-auctions`**: Lấy danh sách sản phẩm trúng thầu của chính Người Mua đang đăng nhập.
-- **`POST /v1/bidders/me/orders/{orderId}/checkout`**: Thanh toán và chốt địa chỉ nhận hàng chính chủ.
-- **`PUT /v1/bidders/me/orders/{orderId}/confirm-received`**: Xác nhận đã nhận được hàng chính chủ.
-
-### 4.3. Auction Bidding Engine (`/v1/auctions/{auctionId}/bids`)
-- **`POST /v1/auctions/{auctionId}/bids`**: Đặt giá cạnh tranh (Bỏ tham số `bidderId`, tự trích xuất chính chủ Bidder từ Token).
-- **`POST /v1/auctions/{auctionId}/bids/buy-now`**: Mua ngay giá cố định (Bọc Redisson Lock).
+### 3.2. Danh mục Redis Keys (Mô hình 1 Key / User)
+| Tên Key Redis | Kiểu dữ liệu | TTL | Mục đích nghiệp vụ |
+|---|---|---|---|
+| `refresh_token:{email}` | String | 3 Ngày | Lưu Refresh Token hiện tại của User |
+| `refresh_token_user:{refreshToken}` | String | 3 Ngày | Tra cứu ngược Email từ Refresh Token |
+| `user:status:{email}` | String | 3 Ngày | Cache trạng thái tài khoản (`ACTIVE` / `BANNED`) để Filter chặn 0ms SQL |
+| `user:logout_at:{email}` | String | 3 Ngày | Lưu mốc timestamp Logout gần nhất để vô hiệu hóa Token cũ |
 
 ---
 
-## 5. TỐI ƯU HÓA TỐC ĐỘ RÚT USER TRỰC TIẾP TỪ RAM (0ms SQL QUERY)
+## 4. CHI TIẾT CÁC LUỒNG NGHIỆP VỤ (END-TO-END BUSINESS FLOWS)
 
-Trong các Service (`ProductService`, `BiddingService`, `OrderService`), phương thức `getAuthenticatedUser()` được tối ưu hóa như sau:
+### 4.1. Nghiệp vụ Đăng Nhập (`POST /v1/auth/login`)
+1. Xác thực Email & Password qua `AuthenticationManager`.
+2. Kiểm tra trạng thái tài khoản trong DB: Nếu `status != ACTIVE` ➔ Ném lỗi HTTP 403 (`USER_BANNED_FROM_BIDDING`).
+3. Sinh Access Token (10m) và Refresh Token UUID.
+4. Ghi dữ liệu Caching lên Redis:
+   - `refresh_token:{email}` = `refreshToken` (TTL 3 ngày).
+   - `refresh_token_user:{refreshToken}` = `email` (TTL 3 ngày).
+   - `user:status:{email}` = `"ACTIVE"` (TTL 3 ngày).
 
-```java
-private User getAuthenticatedUser() {
-    Authentication auth = SecurityContextHolder.getContext().getAuthentication();
-    if (auth != null && auth.getPrincipal() instanceof UserCustomDetails userCustomDetails) {
-        return userCustomDetails.getUser();
-    }
-    String email = (auth != null) ? auth.getName() : null;
-    return userRepository.findByEmail(email)
-            .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
-}
-```
+### 4.2. Nghiệp vụ Đăng Xuất (`POST /v1/auth/logout`)
+1. Rút Email từ `SecurityContextHolder`.
+2. Xóa Refresh Token trên Redis (`refresh_token:{email}` và `refresh_token_user:{refreshToken}`).
+3. Ghi mốc thời gian Đăng xuất lên Redis:
+   - `user:logout_at:{email}` = `System.currentTimeMillis()` (TTL 3 ngày).
+4. Xóa ngữ cảnh bảo mật: `SecurityContextHolder.clearContext()`.
 
-👉 **Lợi ích:** Trích xuất đối tượng `User` trực tiếp từ `UserCustomDetails` đã nạp trong RAM của `SecurityContextHolder` ➔ **Giảm bớt 100% các câu truy vấn SQL dư thừa (`SELECT * FROM users`) mỗi khi gọi API!**
+### 4.3. Nghiệp vụ Admin Khóa Tài Khoản (`PUT /v1/admin/users/{userId}/status`)
+1. Cập nhật `status = BANNED` trong CSDL PostgreSQL (Nguồn sự thật chính).
+2. Đồng bộ trạng thái mới lên Redis ngay lập tức:
+   - `user:status:{email}` = `"BANNED"` (TTL 3 ngày).
+3. Thu hồi quyền Refresh: Xóa `refresh_token:{email}` trên Redis.
+
+### 4.4. Nghiệp vụ Đánh Chặn Filter (`JwtAuthenticationFilter`)
+1. Trích xuất Bearer Token từ Header `Authorization`.
+2. Giải mã Email và mốc thời gian phát hành (`iat`).
+3. **Check 1 (Nick bị khóa)**: Đọc Redis `user:status:{email}`. Nếu `"BANNED"` ➔ Trả HTTP 403 (`USER_BANNED_FROM_BIDDING`).
+4. **Check 2 (Token bị thu hồi do Logout)**: Đọc Redis `user:logout_at:{email}`. Nếu `iat == null` hoặc `iat < (lastLogoutAt - 1000ms)` ➔ Trả HTTP 401 (`UNAUTHENTICATED`).
+5. **Fallback DB (Cache Miss)**: Nếu Redis bị hết hạn/restart ➔ Query DB qua `CustomUserDetailsService`. Nếu DB báo `BANNED` ➔ Trả HTTP 403. Nếu DB báo `ACTIVE` ➔ Cho qua và Re-cache lên Redis.
 
 ---
 
-## 6. PHÒNG CHỐNG LỖ HỔNG BẢO MẬT OWASP TOP 10
+## 5. QUY CHUẨN XỬ LÝ EDGE CASES & ĐÓNG GÓI LỖI
 
-### 6.1. BOLA / IDOR (Broken Object Level Authorization)
-- **Rủi ro:** `USER A` đã đăng nhập cố tình sửa `sellerId` trên URL để xem hoặc hủy đơn hàng của `USER B`: `GET /v1/sellers/999/orders`.
-- **Giải pháp:** Sử dụng `@EnableMethodSecurity` và gắn `@PreAuthorize` tại Controller/Service:
-  ```java
-  @GetMapping("/v1/sellers/{sellerId}/orders")
-  @PreAuthorize("#sellerId == authentication.principal.id or hasRole('ADMIN')")
-  public ResponseEntity<?> getSellerOrders(@PathVariable Long sellerId) { ... }
-  ```
+### 5.1. Buffer Chống Lệch Thời Gian (Clock Skew Buffer)
+- **Quy tắc**: Bổ sung khoảng buffer `1000ms` (1 giây) vào điều kiện so sánh mốc phát hành Token. Token chỉ bị từ chối nếu nó được sinh ra **trước mốc Logout ít nhất 1 giây** nhằm triệt tiêu lỗi lệch millisecond giữa các luồng khi Logout xong Login lại ngay.
 
-### 5.2. Chống Đòn Tấn Công Brute Force Mật Khẩu
-- Sử dụng `BCryptPasswordEncoder` mã hóa mật khẩu kèm Salt ngẫu nhiên + Adaptive Work Factor (Cost = 10).
+### 5.2. Phòng Thủ Token Thiếu Claim `iat`
+- **Quy tắc**: Nếu `tokenIssuedAt == null` khi đã có mốc `user:logout_at` trên Redis ➔ Từ chối ngay lập tức với lỗi HTTP 401.
 
-### 5.3. Cơ Chế Thu Hồi Token (Redis Token Blacklist) Khi Tài Khoản Bị BAN / Logout
-- **Rủi ro:** Vì JWT là Stateless, một Token 10 phút vẫn còn hạn sẽ tiếp tục đặt giá được ngay cả khi Admin vừa bấm BAN tài khoản đó 1 giây trước!
-- **Giải pháp tối ưu:**
-  1. Khi Admin bấm BAN tài khoản (`status = BANNED`) hoặc khi User bấm Logout: Backend ghi chuỗi Token đó vào **Redis Blacklist** (`blacklist_token:<token_hash>`) với `TTL` = thời gian còn lại của Token (ví dụ còn 8 phút thì TTL = 8 phút).
-  2. Trong `JwtAuthenticationFilter`: Đọc Redis kiểm tra xem Token có nằm trong Blacklist hay không. Nếu có ➔ Trả về lỗi 401 Unauthorized lập tức, vô hiệu hóa hoàn toàn Token 10 phút còn lại của tài khoản vừa bị BAN!
+### 5.3. Chuẩn Hóa Phản Hồi Lỗi Tái Sử Dụng Package `exception`
+- Không ghi cứng chuỗi JSON thủ công.
+- Sử dụng `ObjectMapper` + `ErrorResponse` + `ErrorCode` (`USER_BANNED_FROM_BIDDING` & `UNAUTHENTICATED`) đồng bộ 100% với `GlobalExceptionHandler`.
 
+---
 
+## 6. BẢNG MAPPING THÀNH PHẦN HỆ THỐNG (COMPONENT SPECIFICATION)
 
+| STT | Thành phần / Component | Đường dẫn File Mã Nguồn | Vai trò & Nhiệm vụ Kiến trúc |
+|---|---|---|---|
+| 1 | `SecurityConstants` | `config/SecurityConstants.java` | Khai báo tiền tố Header và Hằng số Redis Key (`user:status:`, `user:logout_at:`) |
+| 2 | `JwtTokenProvider` | `security/JwtTokenProvider.java` | Sinh JWT 10 phút (chứa `iat`), giải mã Email và validate chữ ký HMAC-SHA256 |
+| 3 | `UserCustomDetails` | `security/UserCustomDetails.java` | Cầu nối giữa Entity `User` và `UserDetails`, chứa từ khóa `transient` chuẩn SonarQube |
+| 4 | `CustomUserDetailsService` | `security/CustomUserDetailsService.java` | Fallback query CSDL PostgreSQL lấy `User` theo Email khi Redis Cache Miss |
+| 5 | `JwtAuthenticationFilter` | `security/JwtAuthenticationFilter.java` | Filter đánh chặn kiểm tra 2 bước Redis (`user:status` & `user:logout_at`) + Fallback DB |
+| 6 | `AuthService` | `service/AuthService.java` | Xử lý Login (cache status `ACTIVE`), Refresh Token Rotation và Logout (lưu timestamp `logout_at`) |
+| 7 | `UserService` | `service/UserService.java` | Xử lý Admin cập nhật trạng thái User (lưu DB PostgreSQL + đồng bộ Redis `user:status`) |
+| 8 | `ErrorCode` | `exception/ErrorCode.java` | Enum quản lý mã lỗi tập trung (`USER_BANNED_FROM_BIDDING`, `UNAUTHENTICATED`) |
+| 9 | `ErrorResponse` | `exception/ErrorResponse.java` | DTO đóng gói cấu trúc phản hồi lỗi JSON chuẩn RESTful API |
