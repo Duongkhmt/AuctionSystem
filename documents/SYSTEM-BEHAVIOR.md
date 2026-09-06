@@ -1,6 +1,6 @@
 # ĐẶC TẢ HÀNH VI HỆ THỐNG & CƠ CHẾ TỰ ĐỘNG (SYSTEM BEHAVIOR & AUTOMATED SCHEDULER)
 
-## 📊 BẢNG TÓM TẮT CÁC CƠ CHẾ TỰ ĐỘNG
+## BẢNG TÓM TẮT CÁC CƠ CHẾ TỰ ĐỘNG
 
 | STT   | Tên cơ chế                                  | Tác nhân vận hành       | Mục tiêu chính                                                               |
 |:------|:--------------------------------------------|:------------------------|:-----------------------------------------------------------------------------|
@@ -18,7 +18,7 @@
 
 ---
 
-## 🔍 CHI TIẾT ĐẶC TẢ TỪNG CƠ CHẾ HỆ THỐNG
+## CHI TIẾT ĐẶC TẢ TỪNG CƠ CHẾ HỆ THỐNG
 
 ---
 

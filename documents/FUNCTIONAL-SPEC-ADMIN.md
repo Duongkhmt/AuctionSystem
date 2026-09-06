@@ -2,7 +2,7 @@
 
 **Hệ thống:** Sàn Đấu Giá Trực Tuyến Đa Ngành Hàng
 
-## 📊 BẢNG TÓM TẮT DANH SÁCH CHỨC NĂNG
+## BẢNG TÓM TẮT DANH SÁCH CHỨC NĂNG
 
 | STT   | Tên chức năng                         | Đối tượng             | Mục tiêu chính                                                              |
 |:------|:--------------------------------------|:----------------------|:----------------------------------------------------------------------------|
@@ -14,7 +14,7 @@
 
 ---
 
-## 🔍 CHI TIẾT ĐẶC TẢ TỪNG CHỨC NĂNG
+## CHI TIẾT ĐẶC TẢ TỪNG CHỨC NĂNG
 
 ---
 

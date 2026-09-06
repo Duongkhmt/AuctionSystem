@@ -1,166 +1,397 @@
-# TÀI LIỆU PHÂN TÍCH CHUYÊN SÂU: KIẾN TRÚC EVENT-DRIVEN VỚI APACHE KAFKA & GIẢI PHÁP XỬ LÝ LỖI DLT (RETRY & DEAD LETTER TOPIC)
+# TÀI LIỆU PHÂN TÍCH CHUYÊN SÂU & ĐẶC TẢ KỸ THUẬT: KIẾN TRÚC EVENT-DRIVEN VỚI APACHE KAFKA & GIẢI PHÁP XỬ LÝ LỖI DLT (RETRY & DEAD LETTER TOPIC)
 
 ---
 
 # 1. BÀI TOÁN NGHIỆP VỤ CỐT LÕI (CORE BUSINESS PROBLEM)
 
-Trong hệ thống Đấu Giá Trực Tuyến `AuctionSystem`, khi một phiên đấu giá đến giờ hết hạn hoặc có người bấm **Mua Ngay**, sự kiện **`AUCTION_ENDED` (Phiên Đấu Giá Kết Thúc)** được kích hoạt.
+Trong hệ thống Đấu Giá Trực Tuyến `AuctionSystem`, khi một phiên đấu giá đến giờ hết hạn (trạng thái `TIMEOUT`) hoặc người dùng kích hoạt **Mua Ngay** (`BUY_NOW`), sự kiện **`AUCTION_ENDED` (Phiên Đấu Giá Kết Thúc)** được kích hoạt.
 
-Tại thời điểm này, hệ thống phải thực hiện hàng loạt các tác vụ nối tiếp nhau:
-1. Chốt người chiến thắng (`winnerId`) và mức giá trúng thầu cuối cùng.
-2. Tự động đẻ ra Đơn hàng mới ở trạng thái chờ thanh toán (`UNPAID`).
-3. Gửi Email thông báo trúng thầu cho Người Mua (kèm link Checkout).
-4. Gửi Email thông báo bán thành công cho Người Bán.
-5. Gửi thông báo đẩy (Push Notification) lên ứng dụng Mobile/Web.
-6. Cập nhật dữ liệu thời gian thực (Real-time Broadcast) tới toàn bộ người đang xem màn hình.
+Tại thời điểm này, hệ thống phải thực hiện hai nhóm công việc quan trọng:
+1. **Xử lý Chốt thầu Đồng bộ (Synchronous DB Settlement):**
+   - Chốt Người chiến thắng (`winnerId`) và mức giá trúng thầu cuối cùng (`finalPrice`).
+   - Chuyển trạng thái phiên đấu giá từ `RUNNING` sang `ENDED`.
+   - Lưu trữ dữ liệu an toàn vào cơ sở dữ liệu PostgreSQL trong giao dịch độc lập.
+2. **Xử lý Tác vụ Bất đồng bộ (Asynchronous Event-Driven Processing):**
+   - Tự động tạo Đơn hàng mới ở trạng thái chờ thanh toán (`UNPAID`) với hạn thanh toán trong **48 giờ**.
+   - Gửi Email thông báo trúng thầu cho Người Mua kèm liên kết thanh toán.
+   - Đánh dấu chống trùng lặp dữ liệu (Idempotency) trên hệ thống Caching Redis.
 
 ---
 
 ### Thảm Họa Của Mô Hình Xử Lý Đồng Bộ (Synchronous Model)
 
-Nếu hệ thống xử lý tất cả 6 công việc trên **trên cùng 1 luồng xử lý đồng bộ** (Request-Response):
+Nếu hệ thống xử lý tất cả các công việc trên **trên cùng một luồng xử lý đồng bộ** (Request-Response hoặc trong cùng một DB Transaction):
 
 ```text
-[ Hết Giờ Đấu Giá ] ──► (1) Chốt Winner ──► (2) Tạo Đơn Hàng ──► (3) Gọi Mail Server ──► (4) Gọi SMS ──► (5) Push UI
-                                                                         │
-                                                                   ❌ [MAIL SERVER BỊ CHẬM / SẬP]
-                                                                         │
-                                                                         ▼
-                                                     [ TOÀN BỘ LUỒNG BỊ TREO HOẶC ROLLBACK ROLLOUT! ]
+[ Hết Giờ Đấu Giá ] ──► (1) Chốt Winner & DB ──► (2) Tạo Đơn Hàng ──► (3) Gọi Gmail SMTP Server
+                                                                            │
+                                                                      ❌ [MAIL SERVER BỊ CHẬM / TIMEOUT]
+                                                                            │
+                                                                            ▼
+                                                        [ TOÀN BỘ LUỒNG BỊ TREO HOẶC ROLLBACK! ]
 ```
 
-#### Rủi ro nghẽn & sập hệ thống:
-- **Độ trễ quá lớn (High Latency):** Việc chờ các dịch vụ bên ngoài (Mail Server, SMS Gateway) phản hồi khiến luồng xử lý bị ngâm hàng giây đồng hồ.
-- **Sự cố dây chuyền (Cascading Failure):** Nếu máy chủ Email bị ngắt kết nối, lỗi này sẽ bắn ngược lại làm **Rollback** toàn bộ giao dịch $\rightarrow$ Dẫn đến thảm họa: **Người mua thắng thầu hợp lệ nhưng hệ thống lại làm mất đơn hàng!**
+#### Các Rủi Ro Hệ Thống Nghiêm Trọng:
+1. **Độ trễ quá lớn (High Latency):** Việc chờ kết nối tới dịch vụ ngoài (Mail Server Google/SendGrid) khiến luồng xử lý bị ngâm hàng giây đồng hồ.
+2. **Sự cố dây chuyền (Cascading Failure & Transaction Rollback):** Nếu Mail Server bị gián đoạn mạng, Exception ném ra sẽ làm **Rollback** toàn bộ giao dịch DB $\rightarrow$ **Người mua thắng thầu hợp lệ nhưng hệ thống lại làm mất đơn hàng và phiên đấu giá bị hủy!**
+3. **Rủi ro Dual-Write:** Nếu phát tin nhắn sự kiện ra bên ngoài trước khi giao dịch DB chốt đơn hoàn tất (commit), trường hợp DB rollback sẽ dẫn đến tình trạng bắn tin nhắn rác (phát thông báo trúng thầu cho phiên chưa được chốt trong DB).
 
 ---
 
 # 2. CÁC KỊCH BẢN SỰ CỐ THỰC TẾ CHI TIẾT (REAL-WORLD FAILURE SCENARIOS)
 
-Khi triển khai các hệ thống phân tán chịu tải cao, chúng ta phải lường trước **4 kịch bản sự cố thực tế** sau:
+Khi triển khai hệ thống phân tán chịu tải cao, kiến trúc phải giải quyết triệt để **4 kịch bản sự cố thực tế** sau:
 
 ---
 
-###  Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
-- **Tình huống:** Máy chủ gửi Email (SendGrid / Amazon SES) bị quá tải hoặc chập chờn mạng trong khoảng 3 đến 5 giây.
-- **Hậu quả nếu xử lý kém:** Nếu không có cơ chế thử lại thông minh, hàng trăm email thông báo trúng thầu sẽ bị bốc hơi hoàn toàn. Người thắng thầu không nhận được thông báo để vào thanh toán trong 48h.
+### 💥 Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
+- **Tình huống:** Máy chủ gửi Email (Gmail SMTP / SendGrid) bị quá tải hoặc chập chờn mạng trong khoảng 3 đến 5 giây.
+- **Hậu quả nếu xử lý kém:** Hàng chục email thông báo trúng thầu bị bốc hơi. Người thắng thầu không nhận được thông báo để vào thanh toán đơn hàng trong thời hạn 48h.
+- **Giải pháp lập trình:** Sử dụng **Non-Blocking Retry Topic** (`auction.events.ended-retry`) với cơ chế Fixed Backoff 2 giây và thử lại tối đa 3 lần.
 
 ---
 
-###  Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
-- **Tình huống:** Một tin nhắn sự kiện `AUCTION_ENDED` bị lỗi cấu trúc dữ liệu (ví dụ: thiếu thông tin ID người thắng, hoặc sai định dạng số tiền) do lỗi code ở phía phát tin nhắn.
-- **Hậu quả nếu xử lý kém:** Khi phía nhận tin nhắn (Consumer) đọc phải tin nhắn hỏng này, nó sẽ ném lỗi liên tục. Nếu hệ thống cứ bắt thử lại liên tục tại chỗ (Infinite Retry Loop) $\rightarrow$ **Toàn bộ băng chuyền xử lý tin nhắn bị nghẽn cứng, hàng vạn tin nhắn hợp lệ của các phiên đấu giá khác nằm phía sau không bao giờ được xử lý!**
+### 💥 Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
+- **Tình huống:** Một tin nhắn sự kiện `AUCTION_ENDED` bị lỗi cấu trúc dữ liệu (ví dụ: thiếu thông tin ID người thắng, hoặc sai định dạng số) do lỗi code hoặc sai lệch schema.
+- **Hậu quả nếu xử lý kém:** Phía Consumer đọc phải tin nhắn hỏng này và ném Exception liên tục. Nếu thử lại vô hạn tại chỗ (Infinite Retry Loop) $\rightarrow$ **Toàn bộ băng chuyền Kafka Consumer bị kẹt cứng, hàng vạn tin nhắn của các phiên đấu giá hợp lệ phía sau không thể tiến lên!**
+- **Giải pháp lập trình:** Chuyển hướng tin nhắn hỏng sang **Dead Letter Topic (DLT)** (`auction.events.ended-dlt`) sau 3 lần thử thất bại, kích hoạt `@DltHandler` để log cảnh báo cho Admin kiểm tra thủ công.
 
 ---
 
-###  Kịch Bản 3: Sự Cố Trừu Tượng Do Máy Chủ Consumer Bị Restart (App Crash During Processing)
-- **Tình huống:** Phía Consumer vừa nhặt tin nhắn sự kiện xuống, chưa kịp xử lý tạo đơn hàng xong thì máy chủ bị ngắt điện hoặc bị restart (OOM / Deploy phiên bản mới).
-- **Hậu quả nếu xử lý kém:** Nếu không có cơ chế quản lý vị trí đọc (Offset Management) và xác nhận an toàn, tin nhắn sẽ bị mất tích hoặc bị đọc lại đẻ ra 2 đơn hàng trùng lặp cho cùng 1 phiên đấu giá.
+### 💥 Kịch Bản 3: Gửi Trùng Tin Nhắn Do Consumer Restart Hoặc Kafka Rebalance (Duplicate Delivery)
+- **Tình huống:** Phía Consumer vừa tiêu thụ tin nhắn và tạo đơn hàng thành công, nhưng chưa kịp commit offset về Kafka Broker thì máy chủ bị restart hoặc rebalance nhóm consumer. Kafka sẽ phát lại (re-deliver) tin nhắn này lần thứ 2.
+- **Hậu quả nếu xử lý kém:** Đẻ ra 2 hoặc nhiều Đơn hàng trùng lặp cho cùng 1 phiên đấu giá.
+- **Giải pháp lập trình:** Sử dụng **Redis Idempotency Key** (`kafka:processed_event:{eventId}`, TTL 24h) kết hợp kiểm tra DB `existsByAuction_Id(auctionId)`.
 
 ---
 
-###  Kịch Bản 4: Bùng Nổ Tải Phút Chót (High Throughput Spike)
-- **Tình huống:** Vào khung giờ vàng (20h00), có **1.000 phiên đấu giá cùng kết thúc tại đúng 1 mốc giây**.
-- **Hậu quả nếu xử lý kém:** Máy chủ bị quá tải CPU/RAM nếu phải khởi tạo 1.000 luồng xử lý đồng thời để gửi email và tạo đơn hàng.
+### 💥 Kịch Bản 4: Bùng Nổ Tải Phút Chót & Rủi Ro Dual-Write (High Throughput Spike)
+- **Tình huống:** Vào khung giờ cao điểm, có **1.000 phiên đấu giá cùng kết thúc tại đúng 1 giây**.
+- **Hậu quả nếu xử lý kém:** Quá tải CPU/RAM và rủi ro Dual-Write khi chốt đơn.
+- **Giải pháp lập trình:**
+  - Chia Topic `auction.events.ended` thành **3 Partitions** để các Worker Consumer xử lý song song.
+  - Sử dụng Partition Key = `String.valueOf(auctionId)` để đảm bảo thứ tự sự kiện của từng phiên.
+  - Áp dụng `TransactionSynchronizationManager.registerSynchronization` (`afterCommit`) đảm bảo DB commit 100% thành công mới đẩy tin nhắn lên Kafka Broker.
 
 ---
 
-# 3. HƯỚNG GIẢI QUYẾT CHI TIẾT (DETAILED ARCHITECTURAL SOLUTION)
+# 3. KĨ THUẬT LẬP TRÌNH & ĐẶC TẢ CHI TIẾT CODE THỰC TẾ (CODE IMPLEMENTATION SPEC)
 
-Để giải quyết triệt để 4 kịch bản sự cố trên, chúng ta áp dụng **Kiến Trúc Hướng Sự Kiện (Event-Driven Architecture)** kết hợp với **Apache Kafka** và **Chiến Lược Xử Lý Lỗi 3 Tầng (Retry & Dead Letter Topic - DLT)**.
+Hệ thống `AuctionSystem` đã triển khai hoàn chỉnh Kiến trúc Hướng Sự kiện (EDA) dựa trên các thành phần Java/Spring Boot sau:
 
 ---
 
-## ️ THÀNH PHẦN 1: BẤT ĐỒNG BỘ HOÀN TOÀN VỚI APACHE KAFKA (DECOUPLING)
+## ️ THÀNH PHẦN 1: QUY TRÌNH CHỐT THẦU & CHỐNG DUAL-WRITE
 
-Thay vì trực tiếp gọi các dịch vụ gửi email/tạo đơn, luồng chính của Đấu Giá chỉ làm đúng 1 nhiệm vụ duy nhất:
-1. Phát hiện phiên thầu kết thúc.
-2. Đóng gói sự kiện `AUCTION_ENDED` và bắn lên **Kafka Topic (`auction.events.ended`)**.
-3. Phản hồi hoàn tất công việc trong **< 2ms**.
+Trong class `AuctionEndedSettlementHelper.java`, mỗi phiên đấu giá kết thúc được chốt trong một DB Transaction hoàn toàn riêng biệt (`REQUIRES_NEW`). Tin nhắn Kafka chỉ được phát **SAU KHI** giao dịch DB đã commit thành công (`afterCommit`):
 
-```text
-[ Phiên Đấu Giá Kết Thúc ] ──► (Bắn Event < 2ms) ──► [ Apache Kafka Topic: auction.events.ended ]
-                                                                   │
-                                           ┌───────────────────────┼───────────────────────┐
-                                           │                       │                       │
-                                           ▼                       ▼                       ▼
-                                 ┌───────────────────┐   ┌───────────────────┐   ┌───────────────────┐
-                                 │ Consumer 1:       │   │ Consumer 2:       │   │ Consumer 3:       │
-                                 │ Tạo Đơn Hàng DB   │   │ Gửi Email Thông Báo│  │ Push WebSocket UI │
-                                 └───────────────────┘   └───────────────────┘   └───────────────────┘
+```java
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class AuctionEndedSettlementHelper {
+
+    private final AuctionRepository auctionRepository;
+    private final AuctionKafkaProducer kafkaProducer;
+
+    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    public void processSingleAuctionEnded(Auction auction, Bid highestBid, LocalDateTime now) {
+        User winner = determineWinner(auction, highestBid);
+
+        // 1. Cập nhật thông tin chốt phiên trong Database
+        auction.setWinner(winner);
+        auction.setStatus(AuctionStatus.ENDED);
+        auctionRepository.save(auction);
+
+        // 2. Đóng gói DTO Sự kiện với eventId dạng UUID duy nhất
+        AuctionEndedEvent endedEvent = AuctionEndedEvent.builder()
+                .eventId(UUID.randomUUID().toString())
+                .auctionId(auction.getId())
+                .winnerId(winner != null ? winner.getId() : null)
+                .finalPrice(highestBid != null ? highestBid.getBidAmount() : auction.getCurrentPrice())
+                .endedReason("TIMEOUT")
+                .timestamp(now)
+                .build();
+
+        // 3. 🟢 CHỐNG DUAL-WRITE: ĐĂNG KÝ AFTER_COMMIT HOOK BẮN KAFKA
+        if (TransactionSynchronizationManager.isActualTransactionActive()) {
+            TransactionSynchronizationManager.registerSynchronization(new TransactionSynchronization() {
+                @Override
+                public void afterCommit() {
+                    kafkaProducer.sendAuctionEndedEvent(endedEvent);
+                }
+            });
+        } else {
+            kafkaProducer.sendAuctionEndedEvent(endedEvent);
+        }
+    }
+}
 ```
 
-👉 **Giá trị mang lại:** Mỗi dịch vụ (Tạo đơn, Gửi email, Push UI) hoạt động độc lập. Dịch vụ gửi Email có bị sập thì Đơn hàng vẫn được tạo bình thường!
-
 ---
 
-## THÀNH PHẦN 2: CHIẾN LƯỢC XỬ LÝ LỖI 3 TẦNG (RETRY TOPIC & DEAD LETTER TOPIC - DLT)
+## ️ THÀNH PHẦN 2: CẤU HÌNH KAFKA INFRASTRUCTURE & 3-TIER RETRY/DLT (`KafkaConfig.java`)
 
-Đây là **trái tim của giải pháp** giúp hệ thống vừa tự sửa lỗi vừa không bao giờ bị nghẽn mạch khi gặp "tin nhắn hỏng":
+Class `KafkaConfig.java` thiết lập Topic chính (3 Partitions), Producer/Consumer Factory, và cấu hình Non-blocking Retry & DLT 3 Tầng:
 
-```text
-               ┌─────────────────────────────────────────────────────────┐
-               │ 🟢 TẦNG 1: TOPIC CHÍNH (auction.events.ended)           │
-               │ - Tiếp nhận sự kiện kết thúc thầu ban đầu từ Producer   │
-               └────────────────────────────┬────────────────────────────┘
-                                            │
-                                  ❌ Thất bại (Lần 1)
-                                            │
-                                            ▼
-               ┌─────────────────────────────────────────────────────────┐
-               │ 🟡 TẦNG 2: TOPIC RETRY (auction.events.ended-retry)     │
-               │ - Thử lại tối đa 3 lần                                  │
-               │ - Mỗi lần thử cách nhau 2 giây (Backoff Delay = 2000ms)  │
-               └────────────────────────────┬────────────────────────────┘
-                                            │
-                                  ❌ Vẫn thất bại sau 3 lần!
-                                            │
-                                            ▼
-               ┌─────────────────────────────────────────────────────────┐
-               │ 🔴 TẦNG 3: TOPIC DLT (auction.events.ended-dlt)         │
-               │ - "Nghĩa địa cô lập tin nhắn lỗi"                       │
-               │ - Bắn Alert cảnh báo tới Dashboard Quản trị viên        │
-               │ - Băng chuyền chính tiếp tục thông suốt 100%!           │
-               └─────────────────────────────────────────────────────────┘
+```java
+@Slf4j
+@EnableKafka
+@Configuration
+public class KafkaConfig {
+
+    @Value("${spring.kafka.bootstrap-servers:localhost:9092}")
+    private String bootstrapServers;
+
+    public static final String TOPIC_AUCTION_ENDED = "auction.events.ended";
+
+    // 1. Khởi tạo Topic chính với 3 Partitions cho xử lý song song
+    @Bean
+    public NewTopic auctionEndedTopic() {
+        return TopicBuilder.name(TOPIC_AUCTION_ENDED)
+                .partitions(3)
+                .build();
+    }
+
+    // 2. Producer Factory (Key: String, Value: JSON Serializer)
+    @Bean
+    public ProducerFactory<Object, Object> producerFactory() {
+        Map<String, Object> configProps = new HashMap<>();
+        configProps.put(ProducerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        configProps.put(ProducerConfig.KEY_SERIALIZER_CLASS_CONFIG, StringSerializer.class);
+        configProps.put(ProducerConfig.VALUE_SERIALIZER_CLASS_CONFIG, JacksonJsonSerializer.class);
+        return new DefaultKafkaProducerFactory<>(configProps);
+    }
+
+    @Bean
+    public KafkaTemplate<Object, Object> kafkaTemplate() {
+        return new KafkaTemplate<>(producerFactory());
+    }
+
+    // 3. Consumer Factory (Group ID: auction-service-group)
+    @Bean
+    public ConsumerFactory<Object, Object> consumerFactory() {
+        Map<String, Object> props = new HashMap<>();
+        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
+        props.put(ConsumerConfig.GROUP_ID_CONFIG, "auction-service-group");
+        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JacksonJsonDeserializer.class);
+        props.put(JacksonJsonDeserializer.TRUSTED_PACKAGES, "*");
+        return new DefaultKafkaConsumerFactory<>(props);
+    }
+
+    @Bean
+    public ConcurrentKafkaListenerContainerFactory<Object, Object> kafkaListenerContainerFactory() {
+        ConcurrentKafkaListenerContainerFactory<Object, Object> factory = new ConcurrentKafkaListenerContainerFactory<>();
+        factory.setConsumerFactory(consumerFactory());
+        return factory;
+    }
+
+    // 4. Cấu hình Chi tiết Non-blocking Retry & Dead Letter Topic (DLT) 3 Tầng
+    @Bean
+    public RetryTopicConfiguration auctionEndedRetryTopicConfig(KafkaTemplate<Object, Object> kafkaTemplate) {
+        return RetryTopicConfigurationBuilder
+                .newInstance()
+                .maxAttempts(3)                                 // Tối đa 3 lần thử (bao gồm lần đầu)
+                .fixedBackOff(2000L)                            // Khoảng thời gian chờ 2000ms (2 giây)
+                .sameIntervalTopicReuseStrategy(SameIntervalTopicReuseStrategy.SINGLE_TOPIC) // Dùng chung 1 topic -retry
+                .retryTopicSuffix("-retry")                     // Topic: auction.events.ended-retry
+                .dltSuffix("-dlt")                              // Topic: auction.events.ended-dlt
+                .includeTopic(TOPIC_AUCTION_ENDED)
+                .dltProcessingFailureStrategy(DltStrategy.FAIL_ON_ERROR)
+                .create(kafkaTemplate);
+    }
+}
 ```
 
 ---
 
-### Mổ Xẻ Chi Tiết Cách Thức Hoạt Động Của 3 Tầng:
+## THÀNH PHẦN 3: KAFKA PRODUCER BẤT ĐỒNG BỘ (`AuctionKafkaProducer.java`)
 
-#### 1️⃣ Tầng 1 — Topic Chính (`auction.events.ended`):
-- Nơi các Consumer nhặt tin nhắn và xử lý luồng bình thường.
-- Nếu xử lý thành công $\rightarrow$ Gửi xác nhận (ACK) và kết thúc.
+Gửi tin nhắn kèm Partition Key = `auctionId` và xử lý callback kết quả bất đồng bộ qua `CompletableFuture`:
 
-#### 2️⃣ Tầng 2 — Topic Retry (`auction.events.ended-retry`):
-- **Áp dụng cho:** Kịch bản lỗi tạm thời (Transient Failure - như ngắt kết nối DB 2 giây, Mail server bận).
-- **Cách xử lý:** Tin nhắn không bị vứt bỏ, cũng không bị nghẽn tại chỗ. Hệ thống tự động chuyển tin nhắn sang Topic Retry.
-- **Cơ chế Hẹn giờ (Backoff Delay):** Đợi 2 giây sau mới gọi Consumer thử lại. Thử lại tối đa 3 lần. 95% các lỗi tạm thời sẽ tự phục hồi thành công ở tầng này!
+```java
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class AuctionKafkaProducer {
 
-#### 3️⃣ Tầng 3 — Topic DLT - Dead Letter Topic (`auction.events.ended-dlt`):
-- **Áp dụng cho:** Kịch bản "Viên thuốc độc" (Poison Pill - tin nhắn bị hỏng dữ liệu hoàn toàn) hoặc lỗi hệ thống nghiêm trọng kéo dài.
-- **Cách xử lý:** Khi tin nhắn đã kinh qua 3 lần thử lại ở Tầng 2 mà vẫn thất bại, hệ thống tự động gắp tin nhắn này bỏ vào **"Nghĩa Địa Tin Nhắn DLT"**.
-- **Lợi ích kinh hoàng:**
-  1. **Không nghẽn băng chuyền:** Các tin nhắn của hàng ngàn phiên đấu giá khác vẫn tiếp tục chảy mượt mà, không bị kẹt lại.
-  2. **An toàn dữ liệu tuyệt đối:** Tin nhắn lỗi không bị mất đi mà nằm yên trong DLT.
-  3. **Cơ chế Can thiệp & Replay:** Dashboard Admin nhận được cảnh báo Alert $\rightarrow$ Quản trị viên kiểm tra lý do lỗi, sửa code hoặc sửa dữ liệu, rồi bấm nút **"Replay Event"** để phát lại tin nhắn xử lý bù!
+    private final KafkaTemplate<Object, Object> kafkaTemplate;
+
+    public void sendAuctionEndedEvent(AuctionEndedEvent event) {
+        log.info("[Kafka Producer] Đang gửi sự kiện AUCTION_ENDED. AuctionId: {}, WinnerId: {}",
+                event.getAuctionId(), event.getWinnerId());
+
+        CompletableFuture<SendResult<Object, Object>> future = kafkaTemplate.send(
+                KafkaConfig.TOPIC_AUCTION_ENDED,
+                String.valueOf(event.getAuctionId()), // Partition Key giúp gom nhóm partition
+                event
+        );
+
+        future.whenComplete((result, ex) -> {
+            if (ex == null) {
+                log.info("[Kafka Producer SUCCESS] Đã gửi thành công AuctionId: {} vào Topic: {}, Partition: {}, Offset: {}",
+                        event.getAuctionId(),
+                        result.getRecordMetadata().topic(),
+                        result.getRecordMetadata().partition(),
+                        result.getRecordMetadata().offset());
+            } else {
+                log.error("[Kafka Producer ERROR] Gửi thất bại sự kiện AuctionId: {} lên Kafka!",
+                        event.getAuctionId(), ex);
+            }
+        });
+    }
+}
+```
 
 ---
 
-#  4. BẢNG TỔNG HỢP SO SÁNH GIỮA CÁC MÔ HÌNH XỬ LÝ
+## 📥 THÀNH PHẦN 4: KAFKA CONSUMER, REDIS IDEMPOTENCY & DLT HANDLER (`AuctionEndedConsumer.java`)
 
-| Tiêu Chí | Mô Hình Đồng Bộ Cũ (Synchronous) | Mô Hình Bất Đồng Bộ Dùng Kafka (Basic) | Mô Hình Kafka + DLT 3 Tầng (Tối Ưu) |
+Consumer thực hiện tiêu thụ sự kiện, kiểm tra chống trùng lặp qua Redis, tạo Đơn hàng 48h, gửi email ngầm và tiếp nhận Poison Pill tại `@DltHandler`:
+
+```java
+@Slf4j
+@Component
+@RequiredArgsConstructor
+public class AuctionEndedConsumer {
+
+    private final OrderRepository orderRepository;
+    private final AuctionRepository auctionRepository;
+    private final UserRepository userRepository;
+    private final OrderMapper orderMapper;
+    private final RedisTemplate<String, String> redisTemplate;
+    private final Clock clock;
+    private final EmailService emailService;
+
+    private static final String IDEMPOTENT_KEY_PREFIX = "kafka:processed_event:";
+
+    @KafkaListener(topics = KafkaConfig.TOPIC_AUCTION_ENDED)
+    @Transactional
+    public void listenAuctionEnded(AuctionEndedEvent event) {
+        log.info("[Kafka Consumer SUCCESS] Nhận sự kiện AUCTION_ENDED cho auctionId: {}, winnerId: {}",
+                event.getAuctionId(), event.getWinnerId());
+
+        String idempotencyKey = IDEMPOTENT_KEY_PREFIX + event.getEventId();
+
+        // 🟢 BƯỚC 1: READ-ONLY CHECK IDEMPOTENCY TRÊN REDIS
+        if (Boolean.TRUE.equals(redisTemplate.hasKey(idempotencyKey))) {
+            log.warn("[Kafka Consumer IDEMPOTENT] EventId: {} đã được xử lý trước đó. Bỏ qua ghi trùng!",
+                    event.getEventId());
+            return;
+        }
+
+        // 🟢 BƯỚC 2: TẠO ĐƠN HÀNG VÀ GỬI EMAIL NGẦM
+        if (event.getWinnerId() != null && !orderRepository.existsByAuction_Id(event.getAuctionId())) {
+            Auction auction = auctionRepository.findById(event.getAuctionId()).orElse(null);
+            User winner = userRepository.findById(event.getWinnerId()).orElse(null);
+
+            if (auction != null && winner != null) {
+                Order order = orderMapper.toEntity(auction, winner, event.getFinalPrice());
+                order.setPaymentDeadline(LocalDateTime.now(clock).plusHours(48)); // Hạn thanh toán 48h
+                orderRepository.save(order);
+
+                // Gửi Email thông báo thắng thầu ngầm
+                emailService.sendAuctionWinnerEmail(
+                        winner.getEmail(),
+                        winner.getUsername() != null ? winner.getUsername() : winner.getEmail(),
+                        auction.getProduct().getTitle(),
+                        event.getFinalPrice(),
+                        order.getId(),
+                        order.getPaymentDeadline()
+                );
+            }
+        }
+
+        // 🟢 BƯỚC 3: ĐÁNH DẤU IDEMPOTENCY KEY VÀO REDIS (TTL 24 GIỜ)
+        redisTemplate.opsForValue().set(idempotencyKey, "PROCESSED", Duration.ofHours(24));
+    }
+
+    // 🟢 DLT HANDLER: CÔ LẬP TIN NHẮN HỎNG (POISON PILL)
+    @DltHandler
+    public void handleDltMessage(AuctionEndedEvent event) {
+        log.error("[KAFKA DLT ALERT] Tin nhắn bị hỏng đã bị đẩy vào DLT! EventId: {}, AuctionId: {}, Reason: {}. Cần Admin kiểm tra!",
+                event.getEventId(), event.getAuctionId(), event.getEndedReason());
+    }
+}
+```
+
+---
+
+# 4. SƠ ĐỒ LUỒNG DỮ LIỆU TOÀN CẢNH (END-TO-END DATA FLOW)
+
+```text
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🤖 AuctionScheduler (Chạy ngầm định kỳ 10s/lần)                   │
+       └────────────────────────────────┬─────────────────────────────────┘
+                                        │
+                                        ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🛠️ AuctionEndedSettlementHelper (Transaction REQUIRES_NEW)        │
+       │ 1. Cập nhật Auction.status = ENDED & Winner vào PostgreSQL        │
+       │ 2. Đăng ký Synchronization Hook afterCommit()                    │
+       └────────────────────────────────┬─────────────────────────────────┘
+                                        │
+                            (DB Commit Successful)
+                                        │
+                                        ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🚀 AuctionKafkaProducer                                          │
+       │ Bắn AuctionEndedEvent (Partition Key = auctionId)                │
+       └────────────────────────────────┬─────────────────────────────────┘
+                                        │
+                                        ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🟢 TOPIC CHÍNH: auction.events.ended (3 Partitions)              │
+       └────────────────────────┬─────────────────────────────────────────┘
+                                │
+                      (Nhận sự kiện bởi Consumer)
+                                │
+                                ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 📥 AuctionEndedConsumer                                          │
+       │ 1. Read Redis Check: kafka:processed_event:{eventId}             │
+       │    ├─► [Đã tồn tại] ──► SKIP (Chống ghi trùng)                   │
+       │    └─► [Chưa tồn tại] ──► Tạo Order UNPAID (48h) + Gửi Email     │
+       │ 2. Write Redis: kafka:processed_event:{eventId} = PROCESSED (24h)│
+       └────────────────────────┬─────────────────────────────────────────┘
+                                │
+                     ❌ (Gặp Exception / Timeout)
+                                │
+                                ▼ (Sau 2 giây)
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🟡 TOPIC RETRY: auction.events.ended-retry                        │
+       │ - Thử lại tối đa 3 lần (Fixed Backoff = 2000ms)                  │
+       └────────────────────────┬─────────────────────────────────────────┘
+                                │
+                     ❌ (Vẫn thất bại sau 3 lần)
+                                │
+                                ▼
+       ┌──────────────────────────────────────────────────────────────────┐
+       │ 🔴 TOPIC DLT: auction.events.ended-dlt                           │
+       │ - Kích hoạt @DltHandler log [KAFKA DLT ALERT]                    │
+       │ - Cô lập tin nhắn hỏng, Admin kiểm tra và Replay                 │
+       │ - Băng chuyền chính chạy tiếp 100% không bị tắc nghẽn             │
+       └──────────────────────────────────────────────────────────────────┘
+```
+
+---
+
+# 5. BẢNG SO SÁNH CÁC MÔ HÌNH XỬ LÝ
+
+| Tiêu Chí So Sánh | Mô Hình Đồng Bộ Cũ (Synchronous) | Mô Hình Async Kafka Cơ Bản | Mô Hình Kafka + Redis Idempotency + DLT 3 Tầng (Hiện Tại) |
 | :--- | :--- | :--- | :--- |
-| **Thời gian phản hồi (Latency)** | Chậm (hàng giây) | Siêu tốc (< 2ms) | **Siêu tốc (< 2ms)** |
-| **Sự ảnh hưởng khi Mail Server sập** | Treo/Sập toàn bộ giao dịch chốt đơn | Mất tin nhắn gửi email | **Lưu an toàn trên Kafka, phục hồi 100% khi Mail Server bật lại** |
-| **Xử lý tin nhắn bị hỏng dữ liệu** | Đứt luồng xử lý | Nghẽn vĩnh viễn luồng Consumer (Infinite Loop) | **Tự động cô lập vào DLT, băng chuyền chạy tiếp 100%** |
-| **Khả năng khôi phục dữ liệu** | Không thể | Khó khăn | **Dễ dàng Replay thủ công từ DLT Topic** |
+| **Thời gian phản hồi Chốt đơn** | Chậm (hàng giây, ngâm luồng) | Siêu tốc (< 2ms) | **Siêu tốc (< 2ms)** |
+| **Ảnh hưởng khi Mail Server sập** | Rollback toàn bộ, mất đơn hàng | Mất tin nhắn gửi email | **Không ảnh hưởng, Kafka Retry tự gửi lại khi Mail Server phục hồi** |
+| **Xử lý Tin nhắn hỏng (Poison Pill)** | Đứt toàn bộ giao dịch | Gây ngâm / kẹt băng chuyền Consumer (Infinite Loop) | **Tự động cô lập vào DLT, luồng xử lý chính thông suốt 100%** |
+| **Xử lý gửi trùng tin nhắn (Kafka Rebalance)** | Không hỗ trợ | Tạo nhiều đơn hàng bị trùng | **Triệt tiêu 100% nhờ Redis Idempotency Key (TTL 24h)** |
+| **Chống Dual-Write (DB vs Event)** | Dễ bị lệch dữ liệu | Có nguy cơ phát event khi DB rollback | **Tuyệt đối an toàn nhờ `afterCommit` Synchronization Hook** |
 
 ---
 
-#  5. KẾT LUẬN
+# 6. KẾT LUẬN & QUY TRÌNH VẬN HÀNH
 
-Tài liệu này cung cấp một **bức tranh toàn cảnh về mặt kiến trúc và giải pháp nghiệp vụ**:
-- Giải thích rõ **tại sao** xử lý đồng bộ lại nguy hiểm đối với sự kiện `AUCTION_ENDED`.
-- Chỉ ra **4 kịch bản sự cố thực tế** có thể giết chết hệ thống.
-- Đưa ra giải pháp **Kiến trúc Hướng Sự Kiện (EDA)** kết hợp **Chiến lược Phân tầng Xử lý Lỗi 3 Tầng (Retry & DLT)** giúp hệ thống của bạn đạt chuẩn **High-Availability (Sẵn sàng cao)** và **Fault-Tolerant (Tự phục hồi lỗi)** cấp độ Doanh nghiệp!
+Tài liệu đặc tả này phản ánh chính xác 100% thiết kế và mã nguồn thực tế của hệ thống `AuctionSystem`:
+- **Chống tắc nghẽn & Sẵn sàng cao (High Availability):** Chia 3 Partitions cho topic chính và tách riêng tác vụ chốt thầu DB khỏi tác vụ tạo đơn / gửi email.
+- **Tự phục hồi (Fault-Tolerant):** Tầng Retry tự sửa các lỗi mạng chập chờn; tầng DLT bảo đảm an toàn dữ liệu và không làm sập luồng chính khi gặp dữ liệu rác.
+- **An toàn giao dịch:** Kết hợp `TransactionSynchronization` (`afterCommit`) và Redis Idempotency Key bảo đảm nguyên tắc **Exactly-Once Semantics** ở cấp độ nghiệp vụ.
