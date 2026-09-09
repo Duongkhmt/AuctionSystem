@@ -54,6 +54,8 @@ public enum ErrorCode {
     BID_AMOUNT_TOO_LOW(1402, "Mức giá đặt phải lớn hơn hoặc bằng giá hiện tại + bước giá tối thiểu", HttpStatus.BAD_REQUEST),
     ALREADY_HIGHEST_BIDDER(1403, "Bạn đang là người dẫn đầu giá cao nhất, không thể tự đè giá chính mình", HttpStatus.BAD_REQUEST),
     MAX_AUTO_BID_TOO_LOW(1404, "Giá Auto-bid tối đa phải lớn hơn hoặc bằng giá đặt ban đầu", HttpStatus.BAD_REQUEST),
+    CONCURRENT_BID_REJECTED(1405, "Hệ thống đang xử lý lượt đặt giá khác cho phiên này, vui lòng thử lại ngay!", HttpStatus.CONFLICT),
+
 
 
 
@@ -62,11 +64,12 @@ public enum ErrorCode {
     ORDER_ALREADY_PAID(1502, "Đơn hàng này đã được thanh toán trước đó", HttpStatus.BAD_REQUEST),
     CANNOT_SHIP_UNPAID_ORDER(1503, "Không thể giao hàng cho đơn chưa được người mua thanh toán", HttpStatus.BAD_REQUEST),
     ORDER_NOT_IN_SHIPPING_STATE(1504, "Đơn hàng chưa ở trạng thái đang vận chuyển", HttpStatus.BAD_REQUEST),
+    INSUFFICIENT_WALLET_BALANCE(1505, "Số dư ví tiền ảo không đủ để thanh toán đơn hàng. Vui lòng nạp thêm tiền!", HttpStatus.BAD_REQUEST),
+    PAYMENT_SERVICE_UNAVAILABLE(1506, "Dịch vụ Ví tiền ảo hiện đang bảo trì. Đơn hàng của bạn đã được ghi nhận và tự động gia hạn thêm 24h để thanh toán lại!", HttpStatus.SERVICE_UNAVAILABLE),
+    PAYMENT_UNEXPECTED_RESPONSE(1507, "Phản hồi từ cổng thanh toán không xác định", HttpStatus.INTERNAL_SERVER_ERROR),
 
     // ===== RATE LIMIT & CONCURRENCY: 1601 - 1602 =====
-    TOO_MANY_REQUESTS(1601, "Hệ thống đang xử lý dữ liệu, vui lòng chờ 1 chút rồi bấm lại!", HttpStatus.TOO_MANY_REQUESTS),
-    CONCURRENT_BID_REJECTED(1406, "Hệ thống đang xử lý lượt đặt giá khác cho phiên này, vui lòng thử lại ngay!", HttpStatus.CONFLICT);
-
+    TOO_MANY_REQUESTS(1601, "Hệ thống đang xử lý dữ liệu, vui lòng chờ 1 chút rồi bấm lại!", HttpStatus.TOO_MANY_REQUESTS);
 
     ErrorCode(int code, String message, HttpStatusCode httpStatusCode) {
         this.message = message;
