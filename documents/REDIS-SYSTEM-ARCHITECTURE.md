@@ -4,7 +4,7 @@
 
 ## 🎯 TỔNG QUAN (OVERVIEW)
 
-Trong hệ thống Đấu Giá Trực Tuyến `DuAnTrainning`, **Redis (Remote Dictionary Server)** đóng vai trò là một **Hệ thống Bộ nhớ Đệm RAM Siêu Tốc (In-Memory Data Store)** với 3 trụ cột kiến trúc cốt lõi:
+Trong hệ thống Đấu Giá Trực Tuyến `auction-service`, **Redis (Remote Dictionary Server)** đóng vai trò là một **Hệ thống Bộ nhớ Đệm RAM Siêu Tốc (In-Memory Data Store)** với 3 trụ cột kiến trúc cốt lõi:
 
 ```
                                   ┌────────────────────────────────────────────────────────┐
@@ -155,5 +155,5 @@ Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 1
 ---
 
 ### 🎯 TÓM LẠI:
-Nhờ sự phối hợp nhịp nhàng của **4 Lớp Redis** (Caching $\rightarrow$ Rate Limiting $\rightarrow$ Distributed Lock $\rightarrow$ User Session & Status Cache), hệ thống Đấu Giá `DuAnTrainning` của bạn đạt tới đẳng cấp của một **Hệ Thống Doanh Nghiệp Chịu Tải Cao (High-Throughput Enterprise System)**: Vừa chạy siêu tốc 1-2ms, vừa chống spam bot hiệu quả, vừa thu hồi token thông minh tối ưu RAM, vừa đảm bảo tính toàn vẹn dữ liệu DB 100%!
+Nhờ sự phối hợp nhịp nhàng của **4 Lớp Redis** (Caching $\rightarrow$ Rate Limiting $\rightarrow$ Distributed Lock $\rightarrow$ User Session & Status Cache), hệ thống Đấu Giá `auction-service` của bạn đạt tới đẳng cấp của một **Hệ Thống Doanh Nghiệp Chịu Tải Cao (High-Throughput Enterprise System)**: Vừa chạy siêu tốc 1-2ms, vừa chống spam bot hiệu quả, vừa thu hồi token thông minh tối ưu RAM, vừa đảm bảo tính toàn vẹn dữ liệu DB 100%!
 

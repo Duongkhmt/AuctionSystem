@@ -120,7 +120,7 @@ Projects/
    - Nếu không đủ số dư ví ảo ➔ Trả HTTP 200 kèm `status = "INSUFFICIENT_BALANCE"`.
 4. Khởi chạy service ➔ Kiểm tra Dashboard `http://localhost:8761` thấy `PAYMENT-SERVICE` báo `UP`.
 
-### 📍 BƯỚC 3: Cấu hình `AUCTION-SERVICE` (`DuAnTrainning` - Port 8080)
+### 📍 BƯỚC 3: Cấu hình `AUCTION-SERVICE` (`auction-service` - Port 8080)
 1. Thêm các dependency vào `pom.xml`:
    - `spring-cloud-starter-netflix-eureka-client`
    - `spring-cloud-starter-openfeign`
