@@ -65,6 +65,13 @@ public class JwtAuthenticationFilter extends OncePerRequestFilter {
                 // 🟢 Bước 3: Nạp thông tin UserDetails từ CSDL PostgreSQL (Nguồn sự thật chính)
                 UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
 
+                // 🔴 Check 1.5 (DB Fallback cho Banned User): Nếu Redis bị sập/cache miss ➔ Đọc trực tiếp status BANNED từ CSDL PostgreSQL
+                if (!userDetails.isAccountNonLocked() || !userDetails.isEnabled()) {
+                    log.warn("⚠️ [DB Check] Tài khoản Email: {} đã bị ngưng hoạt động bởi Admin (CSDL PostgreSQL)!", email);
+                    sendErrorResponse(response, HttpServletResponse.SC_FORBIDDEN, ErrorCode.USER_BANNED_FROM_BIDDING);
+                    return;
+                }
+
                 // 🔴 Check 2: Kiểm tra Token có được cấp trước mốc Logout không (Kết hợp Redis Cache + Fallback CSDL)
                 if (isTokenRevokedByLogout(email, jwt, userDetails)) {
                     log.warn("⚠️ Token của Email: {} được cấp trước mốc thời gian Logout!", email);
