@@ -1,36 +1,38 @@
 package com.duong.auction.system.service;
 
+import com.duong.auction.system.client.PaymentFeignClient;
+import com.duong.auction.system.dto.request.PaymentRequestDTO;
+import com.duong.auction.system.dto.response.PaymentResponseDTO;
 import com.duong.auction.system.entity.Auction;
 import com.duong.auction.system.entity.Bid;
 import com.duong.auction.system.entity.Order;
-import com.duong.auction.system.entity.User;
 import com.duong.auction.system.enums.AuctionStatus;
 import com.duong.auction.system.enums.AuctionType;
 import com.duong.auction.system.enums.OrderStatus;
+import com.duong.auction.system.enums.PaymentStatus;
 import com.duong.auction.system.enums.ProductStatus;
 import com.duong.auction.system.repository.AuctionRepository;
 import com.duong.auction.system.repository.BidRepository;
 import com.duong.auction.system.repository.OrderRepository;
-import com.duong.auction.system.repository.UserRepository;
 import com.duong.auction.system.service.helper.AuctionEndedSettlementHelper;
+import com.duong.auction.system.service.helper.OrderPaymentTxHelper;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.cache.annotation.CacheEvict;
+import org.springframework.data.domain.PageRequest;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
-import org.springframework.transaction.annotation.Transactional;
 
-import java.math.BigDecimal;
 import java.time.Clock;
 import java.time.LocalDateTime;
 import java.util.List;
 import java.util.Map;
-import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
  * Robot điều hành thời gian hệ thống chạy ngầm định kỳ 10 giây/lần.
- * Tự động kích hoạt phiên, chốt Winner, bắn sự kiện Kafka AUCTION_ENDED, hủy đơn bùng quá 48h và phạt Gậy Vi Phạm.
+ * Tự động kích hoạt phiên, chốt Winner, bắn sự kiện Kafka AUCTION_ENDED,
+ * retry thanh toán bị lỗi (giới hạn 50 đơn/lần) & hủy đơn bùng quá hạn (48h với UNPAID, 24h với PENDING_RETRY).
  */
 @Slf4j
 @Component
@@ -40,14 +42,15 @@ public class AuctionScheduler {
     private final AuctionRepository auctionRepository;
     private final BidRepository bidRepository;
     private final OrderRepository orderRepository;
-    private final UserRepository userRepository;
     private final AuctionEndedSettlementHelper settlementHelper;
+    private final PaymentFeignClient paymentFeignClient;
+    private final OrderPaymentTxHelper orderPaymentTxHelper;
     private final Clock clock;
 
     // Robot điều phối chạy ngầm định kỳ mỗi 10 giây (fixedRate = 10000ms)
+    // 🟢 KHÔNG GẮN @Transactional ĐỂ TRÁNH GIỮ HIKARICP DB CONNECTION POOL KHI GỌI FEIGN HTTP
     @Scheduled(fixedRate = 10000)
     @CacheEvict(value = "auctions", allEntries = true)
-    @Transactional
     public void processAuctionStatusTransitions() {
         LocalDateTime now = LocalDateTime.now(clock);
 
@@ -70,7 +73,10 @@ public class AuctionScheduler {
         // 3. Tự động chốt Winner và bắn sự kiện Kafka AUCTION_ENDED bất đồng bộ
         processEndedAuctions(now);
 
-        // 4. Tự động quét hủy các đơn UNPAID quá 48h & Phạt Gậy Vi Phạm / Khóa 90 ngày nếu bùng 3 lần
+        // 🟢 4. Tự động thử lại thanh toán cho các đơn PAYMENT_PENDING_RETRY (Throttling tối đa 50 đơn/lần)
+        retryPendingPayments(now);
+
+        // 🟢 5. Tự động quét hủy các đơn bùng tiền quá hạn chót (UNPAID quá 48h hoặc PAYMENT_PENDING_RETRY quá 24h)
         processExpiredUnpaidOrders(now);
     }
 
@@ -87,7 +93,7 @@ public class AuctionScheduler {
         for (Auction auction : endedAuctions) {
             Bid highestBid = highestBids.get(auction.getId());
             try {
-                // 🟢 Gọi qua Injected Spring Bean Proxy -> Kích hoạt @Transactional(REQUIRES_NEW) 100%!
+                // Gọi qua Injected Spring Bean Proxy -> Kích hoạt @Transactional(REQUIRES_NEW) 100%!
                 settlementHelper.processSingleAuctionEnded(auction, highestBid, now);
             } catch (Exception e) {
                 log.error(" Lỗi xử lý chốt thầu độc lập cho AuctionId: {}. Bỏ qua phiên này!", auction.getId(), e);
@@ -95,24 +101,52 @@ public class AuctionScheduler {
         }
     }
 
-    // Tự động quét và xử lý các đơn hàng bùng tiền quá 48h
+    // 🟢 Tự động quét và thử lại thanh toán (Giới hạn 50 đơn mỗi 10s để tránh nghẽn Thread)
+    private void retryPendingPayments(LocalDateTime now) {
+        List<Order> pendingOrders = orderRepository
+                .findByStatusAndPaymentDeadlineGreaterThan(
+                        OrderStatus.PAYMENT_PENDING_RETRY,
+                        now,
+                        PageRequest.of(0, 50)
+                );
+
+        if (pendingOrders.isEmpty()) return;
+
+        for (Order order : pendingOrders) {
+            try {
+                String idempotencyKey = "PAY_ORDER_" + order.getId() + "_" + order.getBuyer().getId();
+                PaymentRequestDTO paymentRequest = PaymentRequestDTO.builder()
+                        .orderId(order.getId())
+                        .userId(order.getBuyer().getId())
+                        .amount(order.getWinningPrice())
+                        .build();
+
+                // Gọi Feign Client sang PAYMENT-SERVICE (ngoài Transaction)
+                PaymentResponseDTO paymentResponse = paymentFeignClient.processPayment(idempotencyKey, paymentRequest);
+
+                // Nếu thanh toán thành công -> Ủy quyền cho Helper mở Transaction cập nhật Order & Payment
+                if (paymentResponse.getStatus() == PaymentStatus.SUCCESS) {
+                    orderPaymentTxHelper.updateOrderStatusAndSavePayment(order, null, paymentResponse);
+                    log.info(" Retried thanh toán thành công cho Order ID: {}", order.getId());
+                }
+            } catch (Exception e) {
+                log.warn(" Retry thanh toán chưa thành công cho Order ID: {}. Lý do: {}", order.getId(), e.getMessage());
+            }
+        }
+    }
+
+    // 🟢 Tự động quét và xử lý các đơn hàng bùng tiền quá hạn chót (UNPAID quá 48h, PENDING_RETRY quá 24h)
     private void processExpiredUnpaidOrders(LocalDateTime now) {
+        List<OrderStatus> expiredStatuses = List.of(OrderStatus.UNPAID, OrderStatus.PAYMENT_PENDING_RETRY);
         List<Order> expiredOrders = orderRepository
-                .findByStatusAndPaymentDeadlineLessThanEqual(OrderStatus.UNPAID, now);
+                .findByStatusInAndPaymentDeadlineLessThanEqual(expiredStatuses, now);
 
         for (Order order : expiredOrders) {
-            order.setStatus(OrderStatus.CANCELLED);
-            orderRepository.save(order);
-
-            User buyer = order.getBuyer();
-            if (buyer != null) {
-                int strikes = (buyer.getUnpaidStrikeCount() != null ? buyer.getUnpaidStrikeCount() : 0) + 1;
-                buyer.setUnpaidStrikeCount(strikes);
-
-                if (strikes >= 3) {
-                    buyer.setBannedUntil(now.plusDays(90));
-                }
-                userRepository.save(buyer);
+            try {
+                // 🟢 Ủy quyền cho OrderPaymentTxHelper -> Mở 1 Transaction NGUYÊN TỬ (Atomic) cho từng đơn hàng!
+                orderPaymentTxHelper.cancelExpiredOrderAndPenalizeBuyer(order, order.getStatus(), now);
+            } catch (Exception e) {
+                log.error("Lỗi xử lý hủy đơn hết hạn cho OrderId: {}", order.getId(), e);
             }
         }
     }

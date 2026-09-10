@@ -1,190 +1,134 @@
-# DOCUMENTATION: KIẾN TRÚC MICROSERVICES, SERVICE DISCOVERY & RESILIENCE4J (TUẦN 7)
+#TÀI LIỆU KIẾN TRÚC MICROSERVICES & TỰ PHỤC HỒI THANH TOÁN (WEEK 7)
+
+
+## 1.  TỔNG THỂ & PHÂN ĐỊNH VAI TRÒ DỊCH VỤ
+
+###  Bài toán Đặt ra (Mục tiêu Tuần 7):
+Ban đầu, toàn bộ hệ thống Đấu Giá nằm chung trong 1 ứng dụng duy nhất (Monolith). Khi số lượng người dùng tăng cao, tính năng **Ví tiền / Thanh toán** cần được tách riêng ra thành 1 dịch vụ độc lập (**Microservice**) để đảm bảo an toàn tài chính và chịu tải tốt hơn.
+
+Hệ thống được chia thành **3 ứng dụng độc lập với phân định nhiệm vụ rõ ràng**:
+
+| Dịch vụ (Microservice) | Cổng (Port) | Vai trò & Nhiệm vụ Chi tiết (Dịch vụ này làm gì?) | Làm như thế nào?) |
+| :---| :---:| :---| :---|
+| **`eureka-server`** | `8761` | **Trạm Đăng ký & Định vị Dịch vụ Trung tâm** (Danh bạ)<br>• Quản lý địa chỉ IP/Port của tất cả các service.<br>• Kiểm tra sức khỏe (Heartbeat 30s/lần). | Các service khi khởi động sẽ tự đăng ký IP với Eureka. Khi Service A muốn gọi Service B, nó hỏi Eureka để lấy IP mới nhất chứ không hardcode URL. |
+| **`auction-service`** | `8080` | **Sàn Đấu Giá Chính & Quản lý Đơn hàng**<br>• Quản lý phiên thầu, đặt giá (Bid), chốt Winner.<br>• Quản lý đơn hàng (`UNPAID`, `PAID`, `SHIPPING`, `COMPLETED`, `CANCELLED`).<br>• Robot `AuctionScheduler` 10s/lần kích hoạt phiên, retry đơn trễ, hủy đơn quá hạn. | Tiếp nhận request từ Client, kiểm tra quyền/điều kiện, gọi `PAYMENT-SERVICE` qua OpenFeign để trừ tiền ví, quản lý trạng thái đơn hàng. |
+| **`payment-service`** | `8082` | **Dịch vụ Ví Tiền Ảo & Sổ Sách Tài Chính**<br>• Quản lý số dư Ví (`Wallet`) của từng người dùng.<br>• Xử lý trừ tiền ví Buyer khi Checkout (Tạm giữ Escrow).<br>• Xử lý cộng tiền ví Seller khi Đơn hoàn tất (`COMPLETED`).<br>• Triệt tiêu trừ tiền 2 lần bằng `Idempotency-Key`. | Nhận lệnh từ `AUCTION-SERVICE`. Kiểm tra `Idempotency-Key` trong DB. Nếu hợp lệ ➔ Trừ/Cộng số dư ví và lưu nhật ký giao dịch `payment_transactions`. |
 
 ---
 
-## 1. PHẠM VI CÔNG VIỆC & MỤC TIÊU HOÀN THÀNH
+### Sơ đồ Kiến trúc & Luồng Gọi nhau (System Architecture):
 
-Tài liệu này quy chuẩn toàn bộ Kiến trúc **Service Discovery, Đa dịch vụ Microservices & Khả năng Phục hồi (Resilience4j)** cho Hệ thống Đấu Giá Trực tuyến, bao gồm 4 mục tiêu cốt lõi:
-
-1. **Service Discovery với Spring Cloud Netflix Eureka Server**: Cấu hình trạm đăng ký dịch vụ trung tâm (Port `8761`), cho phép các dịch vụ tự động phát hiện IP/Port của nhau mà không hardcode URL.
-2. **Phân tách Đa Dịch vụ (Microservices Architecture)**: Tách hệ thống thành 2 dịch vụ độc lập: **`AUCTION-SERVICE`** (Port `8080` - Sàn đấu giá chính) và **`PAYMENT-SERVICE`** (Port `8082` - Xử lý Ví tiền ảo & Thanh toán đơn hàng).
-3. **Giao tiếp Liên Dịch vụ qua Spring Cloud OpenFeign**: Sử dụng `@FeignClient(name = "PAYMENT-SERVICE")` gọi API giữa các service thông qua tên dịch vụ định vị trên Eureka.
-4. **Khả năng Phục hồi với Resilience4j (Circuit Breaker, Timeout & Fallback Mechanism)**: Giảm thiểu đáng kể rủi ro sập dây chuyền (Cascading Failure). Phân biệt rõ lỗi hạ tầng với lỗi nghiệp vụ; khi `PAYMENT-SERVICE` bị sập hoặc timeout > 3s, Circuit Breaker tự động ngắt mạch và kích hoạt **Hàm Fallback** để bảo vệ quyền lợi người mua và giữ hệ thống hoạt động mượt mà.
+```mermaid
+flowchart TD
+    Client["Người dùng / Frontend"] -->|1. Đặt giá / Checkout| AuctionService["AUCTION-SERVICE (Port 8080)<br/>Quản lý Phiên & Đơn hàng"]
+    
+    AuctionService -->|2. Hỏi vị trí Service| EurekaServer["EUREKA-SERVER (Port 8761)<br/>Trạm Định vị Dịch vụ"]
+    
+    AuctionService -->|3. Gọi Feign HTTP trừ tiền| PaymentService["PAYMENT-SERVICE (Port 8082)<br/>Quản lý Ví tiền & Trừ số dư"]
+    
+    subgraph CircuitBreakerProtection ["Lớp Bảo Vệ Resilience4j"]
+        PaymentService -- "Sập mạng / Timeout > 3s" --> Fallback["PaymentFeignFallback<br/>Tự động Gia hạn 24h & Thử lại"]
+    end
+```
 
 ---
 
-## 2. DANH MỤC TOÀN BỘ CÁC LỚP & THÀNH PHẦN (FULL COMPONENT CATALOG)
+## 2. MÔ HÌNH TẠM GIỮ TIỀN (ESCROW) & GIẢI NGÂN CHO NGƯỜI BÁN (SELLER PAYOUT)
 
-Dưới đây là danh sách đầy đủ tất cả các Class/Component cấu thành nên hạ tầng Microservices & Resilience:
+Trong sàn đấu giá, **Tiền không được cộng ngay cho Người bán khi Người mua vừa thanh toán**. Hệ thống áp dụng **Mô hình Tạm Giữ Tiền (Escrow Model)** chuẩn e-Commerce:
 
-| STT | Tên Lớp (Class Name) | Đường dẫn File (Location) | Vai trò & Nhiệm vụ chính trong Hệ thống |
+```mermaid
+flowchart LR
+    A["1. Buyer Bấm Checkout"] -->|PAYMENT-SERVICE trừ ví Buyer| B["Sàn Tạm Giữ Tiền (Escrow)<br/>Order: PAID"]
+    B -->|Seller Xuất Hàng| C["Đang Giao Hàng<br/>Order: SHIPPING"]
+    C -->|Buyer Xác Nhận Đã Nhận Hàng| D["Đơn Hoàn Tất<br/>Order: COMPLETED"]
+    D -->|PAYMENT-SERVICE giải ngân| E["Cộng Tiền Vào Ví Seller<br/>(Seller Payout)"]
+```
+
+### 🔹 Giai đoạn 1: Khi Người mua Checkout (`PAID`)
+* `PAYMENT-SERVICE` trừ tiền trong Ví người mua.
+* Số tiền này **nằm ở Tài khoản Trung gian của Sàn (Tạm giữ)**.
+* **Lý do**: Người bán chưa giao hàng. Nếu cộng ngay cho Người bán, nhỡ Người bán ôm tiền không giao hàng hoặc giao hàng giả thì Người mua sẽ bị mất trắng.
+
+### 🔹 Giai đoạn 2: Khi Đơn hàng Hoàn tất (`COMPLETED` -> Giải ngân cho Seller)
+* Người bán giao hàng (`SHIPPING`) ➔ Người mua nhận được hàng ➔ Người mua bấm **"Xác nhận đã nhận hàng thành công"** (`confirmReceived` ➔ Order đổi thành `COMPLETED`).
+* `AUCTION-SERVICE` gọi API / gửi sự kiện sang `PAYMENT-SERVICE`.
+* `PAYMENT-SERVICE` thực hiện **Giải ngân (Payout)**: Lấy tiền đang tạm giữ **CỘNG VÀO VÍ CỦA SELLER** (sau khi trừ % phí sàn).
+
+---
+
+## 3.KỊCH BẢN THỰC TẾ & LUỒNG XỬ LÝ CHI TIẾT (STEP-BY-STEP FLOWS)
+
+### Kịch bản 1: Thanh toán Bình thường (Thành công 100%)
+* **Bối cảnh**: Người mua trúng thầu đơn hàng 5.000.000đ. Ví của người mua có 10.000.000đ. Hệ thống chạy bình thường.
+* **Luồng chạy**:
+  1. Người mua bấm nút **"Thanh toán"**.
+  2. `AUCTION-SERVICE` tạo `Idempotency-Key` duy nhất (ví dụ: `PAY_ORDER_10_USER_5`) và gọi sang `PAYMENT-SERVICE` qua OpenFeign.
+  3. `PAYMENT-SERVICE` kiểm tra ví đủ tiền ➔ Trừ 5.000.000đ ➔ Trả về `PaymentStatus.SUCCESS`.
+  4. `AUCTION-SERVICE` đổi trạng thái Đơn hàng thành **`PAID`** (Đã thanh toán thành công).
+
+---
+
+### Kịch bản 2: Ví KHÔNG ĐỦ TIỀN (Lỗi Nghiệp Vụ Người Dùng)
+* **Bối cảnh**: Đơn hàng 5.000.000đ nhưng ví người mua chỉ còn 1.000.000đ.
+* **Luồng chạy**:
+  1. Người mua bấm **"Thanh toán"**.
+  2. `PAYMENT-SERVICE` kiểm tra thấy thiếu tiền ➔ Trả về HTTP 200 kèm status `INSUFFICIENT_BALANCE`.
+  3. `AUCTION-SERVICE` hiển thị ngay thông báo lỗi cho người dùng: *"Ví không đủ tiền, vui lòng nạp thêm!"*.
+  4. Đơn hàng **GIỮ NGUYÊN trạng thái `UNPAID`** (vẫn giữ thời hạn 48h ban đầu).
+  5. **KHÔNG GIA HẠN 24H** (Vì đây là lỗi thiếu tiền của khách, không phải lỗi sập mạng).
+
+---
+
+### Kịch bản 3: PAYMENT-SERVICE bị Sập hoặc Mạng Chậm (Lỗi Hạ Tầng -> Phục Hồi Êm Ái)
+* **Bối cảnh**: Cổng Ví tiền `PAYMENT-SERVICE` bị đứt cáp, đứt mạng hoặc bị nghẽn phản hồi quá 3 giây.
+* **Luồng chạy**:
+  1. Người mua bấm **"Thanh toán"**.
+  2. Quá 3 giây không nhận được phản hồi ➔ **Resilience4j Circuit Breaker** lập tức ngắt mạch khẩn cấp.
+  3. Kích hoạt hàm dự phòng **`PaymentFeignFallback`** ➔ Trả về status `PENDING_RETRY`.
+  4. `AUCTION-SERVICE` đổi trạng thái Đơn hàng thành **`PAYMENT_PENDING_RETRY`** và **TỰ ĐỘNG CỘNG THÊM 24 GIỜ** vào hạn thanh toán.
+  5. Phản hồi êm ái cho người mua: *"Dịch vụ ví đang bảo trì. Đơn hàng của bạn đã được tự động gia hạn 24h để thanh toán lại!"*.
+
+---
+
+### Kịch bản 4: Robot `AuctionScheduler` Tự Động Thử Lại Thanh Toán (Throttling 50 đơn/lần)
+* **Bối cảnh**: Sau 5 phút sập mạng, `PAYMENT-SERVICE` đã sống lại. Lúc này có 200 đơn hàng đang ở trạng thái `PAYMENT_PENDING_RETRY`.
+* **Luồng chạy**:
+  1. Cứ mỗi **10 giây/lần**, Robot `AuctionScheduler` chạy ngầm.
+  2. Robot xin CSDL tối đa **50 đơn hàng** `PAYMENT_PENDING_RETRY` cũ nhất (`PageRequest.of(0, 50)` để tránh nghẽn thread).
+  3. Robot gọi `PAYMENT-SERVICE` thanh toán bù cho từng đơn.
+  4. Khi `PAYMENT-SERVICE` trả về `SUCCESS` ➔ Robot tự động chuyển đơn thành **`PAID`** mà người mua không cần làm gì thêm!
+
+---
+
+### Kịch bản 5: Hết hạn 24h / 48h & Phạt Gậy Công Bằng (Business Fairness)
+* **Bối cảnh**: Hết thời hạn mà đơn hàng vẫn chưa được thanh toán thành công.
+* **Quy tắc Xử phạt Công bằng**:
+  - **Trường hợp A (Đơn `UNPAID` quá 48h)**: Cho 48h mạng mỡ bình thường mà khách **cố tình không trả tiền** ➔ Hủy đơn & **PHẠT +1 GẬY** (Tích đủ 3 gậy sẽ bị khóa tài khoản 90 ngày).
+  - **Trường hợp B (Đơn `PAYMENT_PENDING_RETRY` quá 24h)**: Khách **đã bấm trả tiền**, nhưng do `PAYMENT-SERVICE` bị sập 24h liên tục ➔ Hủy đơn nhưng **MIỄN PHẠT GẬY** (Do lỗi hệ thống, không phải lỗi người mua).
+
+---
+
+## 3. CƠ CHẾ BẢO VỆ CHỐNG BỌ / LỖI DỮ LIỆU THỰC TẾ
+
+| STT | Tên Cơ chế Bảo vệ | Vấn đề Thực tế Nếu Không Có | Cách Giải quyết Đã Triển khai trong Code |
 | :---: | :---| :---| :---|
-| **1** | `EurekaServerApplication` | `eureka-server/EurekaServerApplication.java` | **Trạm Đăng ký & Định vị Dịch vụ (Port 8761)**:<br>• Gắn nhãn `@EnableEurekaServer`.<br>• Quản lý danh sách IP/Port của tất cả Eureka Clients.<br>• Tự động kiểm tra sức khỏe (Heartbeat Health Check). |
-| **2** | `PaymentServiceApplication` | `payment-service/PaymentServiceApplication.java` | **Microservice Quản lý Ví Tiền Ảo (Port 8082)**:<br>• Đăng ký tên `PAYMENT-SERVICE` lên Eureka.<br>• Trừ số dư Ví Ảo (Virtual Balance) thanh toán đơn hàng.<br>• Xử lý Unique Constraint `idempotency_key` triệt tiêu Race Condition trừ tiền 2 lần. |
-| **3** | `PaymentController` | `payment-service/controller/PaymentController.java` | **Controller Xử lý Giao dịch Ví Tiền Ảo**:<br>• Endpoint `POST /v1/payments/process-order-payment`.<br>• Trả về HTTP 200 kèm `status = "INSUFFICIENT_BALANCE"` cho lỗi nghiệp vụ hết tiền (tránh kích hoạt nhầm Circuit Breaker). |
-| **4** | [`AuctionServiceApplication`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/DuAnTrainningApplication.java) | `src/main/java/.../DuAnTrainningApplication.java` | **Microservice Đấu giá Chính (Port 8080)**:<br>• Gắn nhãn `@EnableFeignClients` *(Tự auto-configure Eureka Client)*.<br>• Quản lý Đấu giá, Đặt giá (Bid), Sản phẩm và Đơn hàng. |
-| **5** | [`PaymentFeignClient`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/client/PaymentFeignClient.java) | `src/main/java/.../client/PaymentFeignClient.java` | **Interface Giao tiếp OpenFeign Client**:<br>• Khai báo `@FeignClient(name = "PAYMENT-SERVICE", fallback = PaymentFeignFallback.class)`.<br>• Truyền Header `Idempotency-Key` gọi API sang Service B qua tên Eureka. |
-| **6** | [`PaymentFeignFallback`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/client/PaymentFeignFallback.java) | `src/main/java/.../client/PaymentFeignFallback.java` | **Xử lý Sự cố & Dự phòng (Fallback Mechanism)**:<br>• Implements `PaymentFeignClient`.<br>• Kích hoạt khi `PAYMENT-SERVICE` bị sập hoặc timeout quá 3s.<br>• Chuyển đơn hàng sang `PAYMENT_PENDING_RETRY` & gia hạn 24h. |
-| **7** | [`ResilienceConfig`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/ResilienceConfig.java) | `src/main/java/.../config/ResilienceConfig.java` | **Cấu hình Resilience4j Circuit Breaker & Timeout**:<br>• Cấu hình `failure-rate-threshold: 50%` (Format kebab-case).<br>• Cấu hình Feign Timeout `connect-timeout: 3000ms` & `read-timeout: 3000ms`. |
+| **1** | **Root White-list State Guard** | Một đơn hàng đã bị hủy (`CANCELLED`) do hết hạn, nhưng 1 response thanh toán thành công trả về muộn lại **"Hồi sinh"** đơn thành `PAID`. | Đặt Guard ngay đầu `OrderPaymentTxHelper`: Nếu đơn đã `CANCELLED`, `PAID`, `SHIPPING` hay `COMPLETED` ➔ **Ngắt ngầm 100%**, không cho phép ghi đè Order hay Payment! |
+| **2** | **Tái sử dụng Bản ghi `Payment`** | Mỗi lần Robot 10s retry thành công lại `new Payment()` mới ➔ 1 đơn hàng bị lưu 2-3 dòng Payment trùng lặp trong DB. | Dùng `paymentRepository.findByOrder_Id(order.getId())` lấy bản ghi cũ ra để cập nhật từ `PENDING` thành `SUCCESS`. |
+| **3** | **Bảo vệ State Machine Payment 1 Chiều** | Trạng thái Payment đang `SUCCESS` bị 1 request trễ cập nhật ngược về `PENDING`. | Nếu `payment.getStatus() == SUCCESS`, giữ nguyên `SUCCESS` vĩnh viễn, không cho phép lùi trạng thái. |
+| **4** | **Phân tách DB Transaction** | Đưa lệnh gọi Feign HTTP (chờ 3s) vào trong `@Transactional` ➔ Làm cạn kiệt DB Connection Pool (HikariCP) gây sập cả hệ thống. | Bỏ `@Transactional` ở hàm gọi Feign. Chỉ mở Transaction trong `OrderPaymentTxHelper` khi ghi CSDL. |
+| **5** | **Tính Nguyên tử khi Hủy đơn (Atomic Expiration)** | Đơn hàng thì bị hủy nhưng người mua chưa kịp bị phạt gậy do server bị ngắt điện giữa chừng. | Bọc hàm `cancelExpiredOrderAndPenalizeBuyer` trong 1 DB Transaction riêng biệt. |
 
 ---
 
-## 3. BẢN ĐỒ KỊCH BẢN NGHIỆP VỤ & CODE MAPPING (CHI TIẾT MÔ TẢ & SOLUTION)
+## 4. BẢNG TRA CỨU MÃ NGUỒN (CODE CATALOG)
 
-### Kịch bản 1: Đăng ký Dịch vụ Tự động (Service Discovery với Eureka)
-
-* **Bài toán Nghiệp vụ**: Trong hệ thống phân tán, các Service có thể đổi IP hoặc mở rộng lên nhiều Instance. Nếu hardcode IP `192.168.1.5:8082` trong code thì khi đổi máy chủ hệ thống sẽ bị lỗi hàng loạt.
-* **Giải pháp Solution**:
-  1. Khởi chạy `eureka-server` ở Port `8761`.
-  2. Cả `AUCTION-SERVICE` (`8080`) và `PAYMENT-SERVICE` (`8082`) khai báo `spring.application.name` và tự động phát nhịp tim (Heartbeat 30s/lần) gửi về Eureka.
-  3. Khi Service A muốn gọi Service B, Service A chỉ cần hỏi Eureka: *"Service 'PAYMENT-SERVICE' đang ở IP/Port nào?"* ➔ Eureka tự động trả về vị trí chính xác.
-
----
-
-### Kịch bản 2: Thanh toán Đơn hàng Thắng Đấu Giá qua OpenFeign (Phân biệt Lỗi Nghiệp vụ & Lỗi Hạ tầng)
-
-* **Bài toán Nghiệp vụ**: Khi phiên đấu giá kết thúc, người thắng cuộc (Winner) bấm **"Thanh toán Đơn hàng bằng Số dư Ví Ảo"** (`POST /v1/bidders/orders/{orderId}/pay`).
-* **Phân biệt Lỗi Nghiệp vụ vs Lỗi Hạ tầng**:
-  - **Lỗi Nghiệp vụ (Business Error - Không đủ số dư ví ảo)**: `PAYMENT-SERVICE` hoạt động bình thường, kiểm tra thấy ví người dùng chỉ có 5 triệu nhưng đơn hàng 15 triệu. `PAYMENT-SERVICE` trả về **`HTTP 200 OK`** kèm `status = "INSUFFICIENT_BALANCE"`. `AUCTION-SERVICE` hiển thị lỗi rõ ràng cho người dùng: *"Số dư ví của bạn không đủ, vui lòng nạp thêm tiền!"* ➔ **KHÔNG KÍCH HOẠT FALLBACK GIA HẠN 24H**, không làm Circuit Breaker đếm lỗi nhầm.
-  - **Lỗi Hạ tầng (Infrastructure Error - Service B sập/Timeout)**: Mất kết nối HTTP, `PAYMENT-SERVICE` đứt mạng hoặc timeout > 3s ➔ Lúc này mới kích hoạt Circuit Breaker & Fallback.
-
----
-
-### Kịch bản 3: Resilience4j Circuit Breaker & Fallback khi `PAYMENT-SERVICE` Bị Sập / Timeout
-
-* **Bài toán Nghiệp vụ**: Dịch vụ Ví Tiền Ảo (`PAYMENT-SERVICE`) bị ngắt kết nối hoặc tắt nguồn (`Port 8082` unreachable) hoặc phản hồi quá chậm (> 3s). Nếu không có cấu hình Timeout và Circuit Breaker, request của người mua bị treo xoay tròn 60s làm cạn kiệt Thread Pool của Server.
-* **Giải pháp Solution (Cấu hình Feign Timeout + Fallback Gia hạn 24h)**:
-  - Class: [`PaymentFeignFallback`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/client/PaymentFeignFallback.java)
-  - Logic chi tiết:
-    1. Cấu hình `connect-timeout: 3000ms` và `read-timeout: 3000ms` cắt đuôi ngay lập tức các request treo quá 3 giây.
-    2. Khi `PAYMENT-SERVICE` bị sập hoặc timeout 3s quá $50\%$ số lượt gọi (`failure-rate-threshold: 50`), Resilience4j Circuit Breaker ngắt mạch sang **`OPEN`**.
-    3. Resilience4j lập tức chuyển hướng luồng xử lý vào hàm Fallback `PaymentFeignFallback.processPayment(...)`.
-    4. Hàm Fallback thực hiện **Ghi nhận Thanh toán Treo & Tự động Gia hạn 24h**:
-       ```java
-       return PaymentResponseDTO.builder()
-               .status("PENDING_RETRY")
-               .paymentDeadlineExtended(true)
-               .message("Dịch vụ Ví tiền ảo hiện đang bảo trì. Đơn hàng của bạn đã được ghi nhận và tự động gia hạn thêm 24h để thanh toán lại!")
-               .build();
-       ```
-    5. `OrderService` cập nhật trạng thái đơn hàng thành `PAYMENT_PENDING_RETRY`, tự động cộng thêm $24\text{ giờ}$ vào deadline thanh toán và phản hồi `HTTP 200` mượt mà cho Client.
-    6. **Sau 10 giây (wait-duration-in-open-state)**: Circuit Breaker chuyển sang trạng thái **`HALF_OPEN`** để thử gửi lại request kiểm tra xem `PAYMENT-SERVICE` đã sống lại chưa.
-
----
-
-## 4. BẢNG PHÂN TÍCH ƯU & NHƯỢC ĐIỂM CỦA GIẢI PHÁP (PROS & CONS ANALYSIS)
-
-| Tiêu chí Phân tích | 🟢 ƯU ĐIỂM (PROS) | 🔴 NHƯỢC ĐIỂM & HẠN CHẾ KỸ THUẬT (CONS) |
-| :--- | :--- | :--- |
-| **1. Khả năng Chống Sập (Fault Tolerance)** | • **Giảm thiểu đáng kể rủi ro Sập dây chuyền (Cascading Failure)**: Ngắt mạch khẩn cấp khi `PAYMENT-SERVICE` quá tải hoặc nghẽn thread. | • **Vẫn tồn tại vùng biên (Edge Cases)**: Trong cửa sổ `minimum-number-of-calls` đầu tiên khi CB chưa kịp đếm đủ lỗi, hoặc nếu Service B bị chậm nhưng vẫn trả về HTTP 200 thì CB chưa ngắt mạch ngay. |
-| **2. Trải nghiệm Người dùng (UX)** | • **Suy giảm êm ái (Graceful Degradation)**: Phân biệt rõ lỗi thiếu tiền (hiển thị thông báo nạp tiền ngay) với lỗi hạ tầng sập mạng (tự động gia hạn 24h). | • **Tính nhất quán chậm (Eventual Consistency)**: Đơn hàng khi sập dịch vụ ví không chuyển `PAID` ngay mà chuyển sang trạng thái chờ `PENDING_RETRY`. |
-| **3. Định tuyến Dịch vụ (Discovery)** | • **Linh hoạt 100%**: Không hardcode IP/Port. Có thể bật/tắt hoặc đổi máy chủ Service B mà Service A không cần sửa $1\text{ dòng code}$. | • **Phụ thuộc Eureka Server**: Nếu Eureka Server bị sập (và không có cấu hình Caching Registry ở Client), các Service sẽ gặp khó khăn khi tìm thấy nhau. |
-| **4. Tự trị Tiền tệ & An toàn (Security)** | • **Triệt tiêu Race Condition trừ tiền 2 lần**: Dùng ràng buộc `UNIQUE constraint` trên `idempotency_key` ở cấp CSDL Cổng Thanh Toán. | • **Cần quản lý Vòng đời Hết hạn 24h**: Phải có Scheduled Job quét tự động hủy đơn và ghi phạt gậy bùng đơn nếu quá 24h không thanh toán được. |
-
-## 6. CẤU TRÚC PHÂN CHIA VÀ KHỞI CHẠY 2 SERVICE THỰC TẾ
-
-```
-Projects/
-├── eureka-server/                     (PORT 8761 - Discovery Registry Server)
-│   ├── src/main/java/.../EurekaServerApplication.java
-│   └── src/main/resources/application.yml
-│
-├── payment-service/                  (PORT 8082 - Service B: Dịch vụ Ví Tiền Ảo)
-│   ├── src/main/java/.../PaymentServiceApplication.java
-│   ├── src/main/java/.../controller/PaymentController.java
-│   └── src/main/resources/application.yml
-│
-└── DuAnTrainning/ (AUCTION-SERVICE)   (PORT 8080 - Service A: Sàn Đấu giá Chính)
-    ├── src/main/java/.../DuAnTrainningApplication.java
-    ├── src/main/java/.../client/PaymentFeignClient.java
-    ├── src/main/java/.../client/PaymentFeignFallback.java
-    ├── src/main/java/.../service/OrderService.java
-    └── src/main/resources/application.yml
-```
-
----
-
-## 7. KẾ HOẠCH BẢN ĐỒ THỰC THI TỪNG BƯỚC (STEP-BY-STEP ROADMAP)
-
-### 📍 BƯỚC 1: Dựng Eureka Server (`eureka-server` - Port 8761)
-1. Khởi tạo ứng dụng Spring Boot với dependency `spring-cloud-starter-netflix-eureka-server`.
-2. Trong file `EurekaServerApplication.java`, thêm annotation `@EnableEurekaServer`.
-3. Trong `application.yml`, cấu hình `server.port = 8761`, `eureka.client.register-with-eureka = false` và `fetch-registry = false`.
-4. Khởi chạy và kiểm tra Dashboard tại `http://localhost:8761`.
-
-### 📍 BƯỚC 2: Dựng Payment Service (`payment-service` - Port 8082)
-1. Khởi tạo ứng dụng Spring Boot với `spring-boot-starter-web` và `spring-cloud-starter-netflix-eureka-client`.
-2. Trong `application.yml`, đặt `spring.application.name = PAYMENT-SERVICE` và `server.port = 8082`.
-3. Viết `PaymentController.java` xử lý `POST /v1/payments/process-order-payment`:
-   - Kiểm tra `Unique Constraint` cột `idempotency_key` trong DB. Nếu vi phạm trùng lặp do 2 request chạy đồng thời ➔ Trả lại kết quả thành công trước đó (Triệt tiêu Race Condition).
-   - Nếu không đủ số dư ví ảo ➔ Trả HTTP 200 kèm `status = "INSUFFICIENT_BALANCE"`.
-4. Khởi chạy service ➔ Kiểm tra Dashboard `http://localhost:8761` thấy `PAYMENT-SERVICE` báo `UP`.
-
-### 📍 BƯỚC 3: Cấu hình `AUCTION-SERVICE` (`auction-service` - Port 8080)
-1. Thêm các dependency vào `pom.xml`:
-   - `spring-cloud-starter-netflix-eureka-client`
-   - `spring-cloud-starter-openfeign`
-   - `spring-cloud-starter-circuitbreaker-resilience4j`
-2. Trong `DuAnTrainningApplication.java`, chỉ cần thêm `@EnableFeignClients` *(Từ Spring Boot 3.x / Spring Cloud 2020+, `@EnableEurekaClient` không còn cần thiết)*.
-3. Trong `application.yml`, cấu hình `feign.client.config.PAYMENT-SERVICE` (connect-timeout 3s, read-timeout 3s) và chỉ số Resilience4j theo chuẩn kebab-case.
-
-### 📍 BƯỚC 4: Viết OpenFeign Client & Fallback trong `AUCTION-SERVICE`
-1. Tạo Interface `PaymentFeignClient.java` với `@FeignClient(name = "PAYMENT-SERVICE", fallback = PaymentFeignFallback.class)`.
-2. Tạo Class `PaymentFeignFallback.java` implements `PaymentFeignClient`, trả về `PENDING_RETRY` kèm `paymentDeadlineExtended = true`.
-
-### 📍 BƯỚC 5: Tích hợp Feign Client vào `OrderService.java`
-1. Inject `PaymentFeignClient` vào [`OrderService`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/OrderService.java).
-2. Khi người mua bấm nút Thanh toán đơn hàng:
-   - Truyền `Idempotency-Key` duy nhất cho đơn hàng.
-   - Gọi `paymentFeignClient.processPayment(idempotencyKey, request)`.
-   - Nếu `SUCCESS` ➔ Chuyển đơn thành `PAID`.
-   - Nếu `INSUFFICIENT_BALANCE` ➔ Hiển thị lỗi thiếu tiền ví ảo, **KHÔNG GIA HẠN 24H**.
-   - Nếu `PENDING_RETRY` (Fallback) ➔ Chuyển đơn thành `PAYMENT_PENDING_RETRY`, tự động cộng 24h vào thời hạn thanh toán.
-
-### 📍 BƯỚC 6: Kiểm thử & Vòng đời Hết hạn (Testing & Expiration Lifecycle)
-1. **Test Thử lại Chủ động (Passive Retry)**: Người mua bấm "Thanh toán lại" trên UI ➔ Gửi lại cùng `Idempotency-Key`.
-2. **Test Thử lại Tự động (Active Retry Scheduled Job)**: Thêm 1 `@Scheduled` Job chạy định kỳ 15m quét các đơn `PAYMENT_PENDING_RETRY` để thử lại khi `PAYMENT-SERVICE` sống lại.
-3. **Test Hết hạn 24h (Order Expiration Job)**: Quét các đơn `PAYMENT_PENDING_RETRY` có `deadline < NOW()` ➔ Chuyển trạng thái `EXPIRED_CANCELLED`, phạt gậy bùng đơn người mua và mời người trả giá cao thứ 2 nhận quyền mua.
-
----
-
-## 8. NÂNG CAO NGHIỆP VỤ: XỬ LÝ RACE CONDITION, PHÂN LOẠI LỖI & VÒNG ĐỜI HẾT HẠN 24H
-
-Để bảo đảm tính tự trị và an toàn tài chính tuyệt đối trong hệ thống thanh toán ví tiền ảo, dự án giải quyết 3 bài toán nghiệp vụ nâng cao:
-
-### 8.1. Triệt tiêu Race Condition khi kiểm tra Idempotency Key (Chống Trừ Số Dư Ví 2 Lần)
-* **Vấn đề Chống Lặp (Check-then-act Vulnerability)**:
-  Nếu 2 request (Ví dụ: Người dùng bấm "Thanh toán lại" trên giao diện cùng lúc Scheduled Job tự động quét lại đơn) gửi lên `PAYMENT-SERVICE` gần như đồng thời:
-  - Nếu làm theo cách ngây thơ "Check DB xem có chưa ➔ Chưa có ➔ Trừ tiền ➔ Lưu DB": Cả 2 request sẽ cùng check thấy "Chưa có", và cả 2 đều trừ số dư ví ảo ➔ **User bị trừ tiền 2 lần!**
-* **Giải pháp Tự trị 100% (Atomic Unique Constraint Enforcement)**:
-  1. Trong CSDL của `PAYMENT-SERVICE`, cột `idempotency_key` trong bảng `payment_transactions` được thiết lập ràng buộc duy nhất: **`CONSTRAINT uk_idempotency_key UNIQUE (idempotency_key)`**.
-  2. Khi 2 request nộp song song, CSDL PostgreSQL bắt buộc chỉ cho phép $1\text{ request}$ chèn thành công. Request thứ 2 sẽ bị nổ lỗi vi phạm khóa duy nhất (`DataIntegrityViolationException`).
-  3. `PAYMENT-SERVICE` bắt lỗi này và lập tức chuyển hướng đọc lại kết quả của request thứ nhất ➔ **Triệt tiêu 100% rủi ro Race Condition trừ tiền trùng lặp!**
-
----
-
-### 8.2. Phân biệt Lỗi Hạ Tầng (Service Sập) vs Lỗi Nghiệp Vụ Hợp Lệ (Không Đủ Số Dư Ví)
-* **Vấn đề Nhầm lẫn Circuit Breaker**:
-  Circuit Breaker chỉ được phép ngắt mạch khi có **Lỗi Hạ Tầng** (Sập service, đứt mạng, Timeout > 3s). Nếu người dùng không đủ số dư ví ảo mà `PAYMENT-SERVICE` ném Exception 500 ➔ Circuit Breaker sẽ đếm đây là $1\text{ lỗi hạ tầng}$, dẫn tới ngắt mạch nhầm và nhảy vào Fallback thông báo *"Dịch vụ bảo trì, đã gia hạn 24h"*. Điều này làm sai lệch sự thật nghiệp vụ!
-* **Giải pháp Phân loại Lỗi**:
-  - Khi người dùng **Không đủ số dư ví ảo**, `PAYMENT-SERVICE` trả về **`HTTP 200 OK`** kèm DTO:
-    ```json
-    {
-      "status": "INSUFFICIENT_BALANCE",
-      "message": "Số dư ví ảo không đủ để thanh toán đơn hàng!",
-      "requiredAmount": 15000000,
-      "currentBalance": 5000000
-    }
-    ```
-  - Vì là `HTTP 200`, OpenFeign không coi đây là lỗi hạ tầng (không đếm vào failure rate của Circuit Breaker).
-  - `AUCTION-SERVICE` nhận được `INSUFFICIENT_BALANCE` sẽ hiển thị ngay thông báo lỗi cho người dùng: *"Ví ảo của bạn không đủ tiền, vui lòng nạp thêm!"* ➔ **KHÔNG GIA HẠN 24H SAU SỰ THẬT!**
-
----
-
-### 8.3. Vòng đời Hết hạn 24h & Xử lý Đơn hàng Hủy (`Order Expiration Lifecycle`)
-* **Bài toán Đơn hàng Treo**: Nếu sau 24h gia hạn mà đơn hàng vẫn ở trạng thái `PAYMENT_PENDING_RETRY` (do `PAYMENT-SERVICE` sập kéo dài hoặc người dùng ngó lơ không nạp tiền ví ảo), hệ thống phải có quy trình giải phóng đơn hàng:
-* **Quy trình Xử lý Tự động**:
-  1. Một Scheduled Job `OrderExpirationScheduler` chạy định kỳ (ví dụ 1 tiếng/lần) trong `AUCTION-SERVICE` quét các đơn `PAYMENT_PENDING_RETRY` có `deadline < NOW()`.
-  2. Chuyển trạng thái đơn hàng thành **`EXPIRED_CANCELLED`** (Đơn hàng bị hủy do hết hạn).
-  3. Ghi nhận phạt **1 gậy bùng đơn** vào tài khoản người mua (`unpaid_strike_count + 1`).
-  4. **Chính sách Mở lại Đấu Giá**: Đẩy sự kiện Kafka / Notification mời **Người trả giá cao thứ nhì (Second-Highest Bidder)** nhận quyền mua sản phẩm hoặc mở lại phiên đấu giá mới.
+| Tên File Code | Đường dẫn Chi tiết | Nhiệm vụ Chính trong Hệ thống |
+| :---| :---| :---|
+| [OrderPaymentTxHelper.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/helper/OrderPaymentTxHelper.java) | `service/helper/OrderPaymentTxHelper.java` | Mở `@Transactional` ghi DB an toàn, bảo vệ Root State Guard 1 chiều, tái sử dụng Payment record. |
+| [AuctionScheduler.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/AuctionScheduler.java) | `service/AuctionScheduler.java` | Robot 10s/lần: Tự động kích hoạt phiên, chốt winner, retry 50 đơn/lần, hủy đơn & phạt gậy công bằng. |
+| [OrderRepository.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/repository/OrderRepository.java) | `repository/OrderRepository.java` | Chứa các câu query tìm đơn quá hạn 48h, đơn `PENDING_RETRY` kèm `Pageable` phân trang. |
+| [PaymentRepository.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/repository/PaymentRepository.java) | `repository/PaymentRepository.java` | Chứa query `findByOrder_Id` để tìm và tái sử dụng bản ghi Payment cũ. |
+| [PaymentFeignClient.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/client/PaymentFeignClient.java) | `client/PaymentFeignClient.java` | Khai báo OpenFeign Client gọi API trừ tiền ví sang `PAYMENT-SERVICE` via Eureka. |
+| [PaymentFeignFallback.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/client/PaymentFeignFallback.java) | `client/PaymentFeignFallback.java` | Hàm dự phòng khi `PAYMENT-SERVICE` sập: Trả về `PENDING_RETRY` & gia hạn 24h. |
+| [OrderService.java](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/OrderService.java) | `service/OrderService.java` | Tiếp nhận request Checkout từ Controller, gọi Feign ngoài Transaction. |
