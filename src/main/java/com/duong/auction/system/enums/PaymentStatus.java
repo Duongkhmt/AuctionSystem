@@ -1,7 +1,9 @@
 package com.duong.auction.system.enums;
 
 public enum PaymentStatus {
-    SUCCESS, // Thanh toán thành công
-    FAILED,  // Thanh toán thất bại
-    PENDING  // Đang chờ cổng thanh toán VNPAY xử lý
+    SUCCESS,                // Thanh toán / Trừ tiền ví thành công
+    INSUFFICIENT_BALANCE,   // Thiếu tiền trong ví
+    PENDING_RETRY,          // Lỗi mạng/Service sập, đang chờ thử lại
+    FAILED                  // Thất bại vĩnh viễn (Đơn bị hủy / Ví bị khóa)
 }
+

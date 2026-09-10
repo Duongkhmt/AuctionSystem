@@ -2,6 +2,7 @@ package com.duong.auction.system.client;
 
 import com.duong.auction.system.dto.request.PaymentRequestDTO;
 import com.duong.auction.system.dto.response.PaymentResponseDTO;
+import com.duong.auction.system.enums.PaymentStatus;
 import com.duong.auction.system.exception.ErrorCode;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
@@ -16,7 +17,7 @@ public class PaymentFeignFallback implements PaymentFeignClient {
                 request != null ? request.getOrderId() : "N/A");
 
         return PaymentResponseDTO.builder()
-                .status("PENDING_RETRY")
+                .status(PaymentStatus.PENDING_RETRY)
                 .errorCode(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE.name())
                 .message(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE.getMessage())
                 .paymentDeadlineExtended(true)

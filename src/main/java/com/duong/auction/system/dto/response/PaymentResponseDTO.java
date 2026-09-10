@@ -1,5 +1,6 @@
 package com.duong.auction.system.dto.response;
 
+import com.duong.auction.system.enums.PaymentStatus;
 import lombok.AllArgsConstructor;
 import lombok.Builder;
 import lombok.Data;
@@ -13,7 +14,7 @@ import java.math.BigDecimal;
 @Builder
 public class PaymentResponseDTO {
     private String transactionId;
-    private String status; // "SUCCESS", "INSUFFICIENT_BALANCE", "PENDING_RETRY"
+    private PaymentStatus status;
     private String errorCode;
     private String message;
     private BigDecimal currentBalance;
