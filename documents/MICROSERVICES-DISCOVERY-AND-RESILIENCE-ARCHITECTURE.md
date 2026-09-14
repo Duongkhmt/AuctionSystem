@@ -165,7 +165,7 @@ flowchart LR
 
 ---
 
-### 6.1. BÀI TOÁN BẢO MẬT & MÔ HÌNH NGUY CƠ (THREAT MODEL & CORE PROBLEMS)
+### 6.1. BÀI TOÁN BẢO MẬT & MÔ HÌNH NGUY CƠ 
 
 Không giống như `auction-service` chỉ tiếp nhận request từ phía Người dùng (Client), `payment-service` là một **Dịch vụ Đa Kênh (Hybrid Resource Server)** phải phục vụ đồng thời **2 nhóm đối tượng gọi API hoàn toàn khác biệt**:
 
@@ -180,12 +180,12 @@ flowchart TD
     Caller2 -- "Nếu KHÔNG Bảo mật Lớp 2" --> Threat2["RỦI RO 2: Lỗ hổng IDOR/BOLA cho phép xem trộm<br/>số dư ví và lịch sử giao dịch người khác!"]
 ```
 
-#### 🚨 Rủi ro 1: Tấn công trực tiếp vào Endpoint Trừ Tiền Nội Bộ (Server-to-Server Threat)
+#### 1: Tấn công trực tiếp vào Endpoint Trừ Tiền Nội Bộ (Server-to-Server Threat)
 * **Bối cảnh**: `auction-service` gọi `payment-service` qua OpenFeign (`POST /v1/payments/process-order-payment`) để trừ tiền ví khi Checkout đơn hàng trúng thầu.
 * **Kịch bản Tấn công (Attack Vector)**: `payment-service` lắng nghe HTTP request trên Port 8082. Kẻ tấn công có thể quét thấy Port 8082 và gửi trực tiếp request HTTP bằng Postman/Curl đến `/v1/payments/process-order-payment` kèm `orderId` và `userId` giả mạo.
 * **Yêu cầu Kỹ thuật**: Phải có **Cơ chế Xác thực Chuỗi Bí mật Giữa 2 Server (Shared Secret Key Authentication)** để đảm bảo CHỈ CÓ cuộc gọi xuất phát từ `auction-service` thật mới được phép thực thi logic trừ tiền.
 
-#### 🚨 Rủi ro 2: Lỗ hổng Rò rỉ Dữ liệu Cá nhân IDOR/BOLA (Client-to-Service Threat)
+####  2: Lỗ hổng Rò rỉ Dữ liệu Cá nhân IDOR/BOLA (Client-to-Service Threat)
 * **Bối cảnh**: Người dùng mở ứng dụng di động / Web để truy vấn số dư Ví tiền (`Wallet`) và xem nhật ký biến động tài khoản.
 * **Kịch bản Tấn công (IDOR / Broken Object Level Authorization)**: Nếu thiết kế API truyền thống nhận ID người dùng trên URL `GET /v1/wallets/users/{userId}`, kẻ tấn công có thể sửa URL để xem trộm ví của nạn nhân khác.
 * **Nguyên tắc Thiết kế Zero-Trust**:
