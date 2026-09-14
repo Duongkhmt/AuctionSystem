@@ -39,6 +39,7 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     List<Order> findByStatusAndPaymentDeadlineGreaterThan(OrderStatus status, LocalDateTime now);
 
     // Truy vấn các đơn hàng đã quá hạn chót cho tập hợp nhiều trạng thái (UNPAID quá 48h, PAYMENT_PENDING_RETRY quá 24h gia hạn)
+    @EntityGraph(attributePaths = {"buyer"})
     List<Order> findByStatusInAndPaymentDeadlineLessThanEqual(Collection<OrderStatus> statuses, LocalDateTime now);
 
     // Bổ sung tham số Pageable pageable để hỗ trợ Throttling 50 đơn/lượt

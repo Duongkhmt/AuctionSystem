@@ -68,7 +68,11 @@ public class OrderPaymentTxHelper {
      * 🟢 HÀM MỚI: Hủy đơn quá hạn & Phạt gậy người mua trong 1 Transaction NGUYÊN TỬ (Atomic)
      */
     @Transactional
-    public void cancelExpiredOrderAndPenalizeBuyer(Order order, OrderStatus oldStatus, LocalDateTime now) {
+    public void cancelExpiredOrderAndPenalizeBuyer(Long orderId, LocalDateTime now) {
+        Order order = orderRepository.findById(orderId).orElse(null);
+        if (order == null) return;
+
+        OrderStatus oldStatus = order.getStatus();
         order.setStatus(OrderStatus.CANCELLED);
         orderRepository.save(order);
         User buyer = order.getBuyer();

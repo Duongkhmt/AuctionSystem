@@ -9,6 +9,7 @@ import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
+import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.Collection;
@@ -37,6 +38,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
 
 
     // 1. Bulk Update: SCHEDULED -> RUNNING khi đến giờ startTime & Sản phẩm đã APPROVED
+    @Transactional
     @Modifying
     @Query("UPDATE Auction a SET a.status = :runningStatus " +
             "WHERE a.status = :scheduledStatus " +
@@ -49,6 +51,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
             @Param("approvedStatus") ProductStatus approvedStatus
     );
     // 2. Bulk Update: RUNNING -> ENDED khi đến giờ endTime
+    @Transactional
     @Modifying
     @Query("UPDATE Auction a SET a.status = :endedStatus " +
             "WHERE a.status = :runningStatus " +
@@ -60,6 +63,7 @@ public interface AuctionRepository extends JpaRepository<Auction, Long> {
             @Param("endedStatus") AuctionStatus endedStatus
     );
     //RUNNING -HẾT HẠN VỚI TRẠNG THÁI ĐẤU GIÁ MUA NGAY
+    @Transactional
     @Modifying
     @Query("UPDATE Auction a SET a.status = :expiredStatus " +
             "WHERE a.status = :runningStatus " +

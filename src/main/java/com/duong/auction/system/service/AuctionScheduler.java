@@ -144,7 +144,7 @@ public class AuctionScheduler {
         for (Order order : expiredOrders) {
             try {
                 // 🟢 Ủy quyền cho OrderPaymentTxHelper -> Mở 1 Transaction NGUYÊN TỬ (Atomic) cho từng đơn hàng!
-                orderPaymentTxHelper.cancelExpiredOrderAndPenalizeBuyer(order, order.getStatus(), now);
+                orderPaymentTxHelper.cancelExpiredOrderAndPenalizeBuyer(order.getId(), now);
             } catch (Exception e) {
                 log.error("Lỗi xử lý hủy đơn hết hạn cho OrderId: {}", order.getId(), e);
             }
