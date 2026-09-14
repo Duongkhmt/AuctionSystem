@@ -158,4 +158,4 @@ CREATE INDEX idx_products_category_id ON products(category_id);
 
 ## 🎯 KẾT LUẬN
 
-Cơ sở dữ liệu của dự án **`DuAnTrainning.AuctionSystem`** được thiết kế **rất bài bản, chặt chẽ và đạt tỷ lệ tương thích trên 90% với bộ đặc tả nghiệp vụ**. Các điểm cốt lõi như **Proxy Bidding, Anti-Sniping, Quản lý thuộc tính động JSONB, Ẩn danh người dùng và Xử lý Đơn hàng Sau Đấu Giá (Order & Settlement)** đều được hỗ trợ trực tiếp và tối ưu hóa bằng các Index chuyên biệt.
+Cơ sở dữ liệu của dự án **`AuctionSystem`** được thiết kế **rất bài bản, chặt chẽ và đạt tỷ lệ tương thích trên 90% với bộ đặc tả nghiệp vụ**. Các điểm cốt lõi như **Proxy Bidding, Anti-Sniping, Quản lý thuộc tính động JSONB, Ẩn danh người dùng và Xử lý Đơn hàng Sau Đấu Giá (Order & Settlement)** đều được hỗ trợ trực tiếp và tối ưu hóa bằng các Index chuyên biệt.

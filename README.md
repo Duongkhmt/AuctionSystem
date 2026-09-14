@@ -1,6 +1,6 @@
 # 1. Project Overview
 
-**DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng.
+**AuctionSystem (Backend Microservices)** là hệ thống Backend phục vụ cho nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng.
 
 Hệ thống giải quyết bài toán đấu giá hàng hóa minh bạch, cạnh tranh theo thời gian thực và quản lý tài sản động. 
 Nền tảng hỗ trợ người dùng đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), hỗ trợ quy trình kiểm duyệt bài đăng bởi Quản trị viên (Admin), tích hợp công cụ tự động đấu giá (Proxy Bidding Engine), 
@@ -19,7 +19,7 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 # 2. Tech Stack
 
 - **Java:** 21 (Eclipse Temurin 21)
-- **Spring Boot:** 4.1.0 (starter parent `org.springframework.boot:4.1.0`)
+- **Spring Boot:** 3.2.3 (starter parent `org.springframework.boot:3.2.3`, Spring Cloud `2023.0.0`)
 - **Apache Kafka (Spring Kafka):** `org.springframework.kafka:spring-kafka` — Hạ tầng Event-Driven Messaging bất đồng bộ xử lý vòng đời kết thúc đấu giá (`AUCTION_ENDED`), tích hợp cơ chế Non-Blocking Retry Topic 3 tầng (`-retry`, `-dlt`), cô lập tin nhắn hỏng DLT (`@DltHandler`), chống Dual-Write bằng Spring `afterCommit`, và Check-Then-Mark Idempotent Consumer kết hợp với Redis 24h.
 - **Spring Security:** `org.springframework.boot:spring-boot-starter-security`
 - **Spring Data JPA:** `org.springframework.boot:spring-boot-starter-data-jpa`
@@ -63,7 +63,7 @@ hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
 #### Bước 1: Clone dự án
 ```bash
 git clone https://github.com/Duongkhmt/AuctionSystem.git
-cd Backend/DuAnTrainning
+cd Backend/auction-service
 ```
 
 #### Bước 2: Cấu hình Cơ sở dữ liệu & Biến môi trường
@@ -87,7 +87,7 @@ CLOUDINARY_API_SECRET=your_api_secret
 ```
 hoặc chạy tập tin `.jar` sau khi build:
 ```bash
-java -jar target/DuAnTrainning-0.0.1-SNAPSHOT.jar
+java -jar target/auction-service-0.0.1-SNAPSHOT.jar
 ```
 
 ---
@@ -104,7 +104,7 @@ docker-compose up -d --build
 
 #### 2. Khởi chạy cặp đôi Backend & Database PostgreSQL riêng (Dev Mode):
 ```bash
-cd /home/duong/Projects/Backend/DuAnTrainning
+cd /home/duong/Projects/Backend/auction-service
 docker-compose up -d --build
 ```
 

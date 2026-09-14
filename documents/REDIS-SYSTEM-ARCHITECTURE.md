@@ -1,4 +1,4 @@
-# 📕 TÀI LIỆU TOÀN DIỆN VỀ KIẾN TRÚC REDIS TRONG HỆ THỐNG ĐẤU GIÁ (PROJECT: DuAnTrainning)
+# 📕 TÀI LIỆU TOÀN DIỆN VỀ KIẾN TRÚC REDIS TRONG HỆ THỐNG ĐẤU GIÁ (PROJECT: AUCTION SYSTEM)
 
 ---
 
@@ -57,7 +57,7 @@ Redis Cache đóng vai trò là **"Tờ Giấy Nháp RAM"** ghi sẵn các dữ 
 ### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Rate Limiting đóng vai trò là **"Cầu Dao An Toàn Tự Động"** kiểm soát tốc độ bấm nút của từng cá nhân người dùng:
 
-- *Tập tin:* [`RateLimit.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/aspect/RateLimit.java), [`RateLimitAspect.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/aspect/RateLimitAspect.java)
+- *Tập tin:* [`RateLimit.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/aspect/RateLimit.java), [`RateLimitAspect.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/aspect/RateLimitAspect.java)
 - *Áp dụng:* `@RateLimit(maxRequests = 5, timeWindowSeconds = 10)` dán trên hàm `BiddingService.placeBid()`
 
 #### Các kỹ thuật đỉnh cao đã triển khai:
@@ -87,7 +87,7 @@ Rate Limiting đóng vai trò là **"Cầu Dao An Toàn Tự Động"** kiểm s
 ### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Distributed Lock đóng vai trò là **"Cây Búa Trọng Tài Báo Giờ"** ép các người dùng khác nhau phải xếp hàng từng người một khi cùng tranh chấp 1 sản phẩm:
 
-- *Tập tin:* [`RedisConfig.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/RedisConfig.java) (`RedissonClient`), [`BiddingConcurrencyFacade.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/BiddingConcurrencyFacade.java), [`AuctionBiddingController.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/controller/AuctionBiddingController.java)
+- *Tập tin:* [`RedisConfig.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/config/RedisConfig.java) (`RedissonClient`), [`BiddingConcurrencyFacade.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/BiddingConcurrencyFacade.java), [`AuctionBiddingController.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/controller/AuctionBiddingController.java)
 - *Áp dụng:* Bọc `placeBidWithLock` và `executeBuyNowWithLock` theo ổ khóa `lock:auction:{auctionId}`
 
 #### Các kỹ thuật đỉnh cao đã triển khai:

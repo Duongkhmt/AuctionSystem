@@ -5,7 +5,7 @@
 ##  I. TỔNG QUAN BÀI TOÁN VÀ ĐỐI TƯỢNG SỬ DỤNG
 
 ### 1. Tổng quan Dự án & Bài toán Kinh doanh
-- **DuAnTrainning (AuctionSystem)** là hệ thống Backend phục vụ cho Nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng (Nhà đất, Xe hơi, Tranh nghệ thuật, Đồ cổ, Đồ điện tử...).
+- **AuctionSystem (Backend Microservices)** là hệ thống Backend phục vụ cho Nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng (Nhà đất, Xe hơi, Tranh nghệ thuật, Đồ cổ, Đồ điện tử...).
 - Hệ thống giải quyết bài toán giao dịch tài sản minh bạch, gia tăng cạnh tranh giá theo thời gian thực (*Real-time Competitive Bidding*) và quản lý thuộc tính tài sản động (*Dynamic Product Attributes*).
 - Nền tảng hỗ trợ quy trình kiểm duyệt bài đăng nghiêm ngặt bởi Quản trị viên (*Admin Moderation*), tích hợp **Động cơ Đấu giá Tự động (Proxy Bidding Engine)**, **Chế độ Chốt Thầu Thời Gian Cứng (Hard-Close Mode — Hết giờ là hết giờ)**, **Tự động xử lý đơn hàng bùng tiền quá 48h kèm Chế tài phạt gậy vi phạm (Unpaid 3-Strikes Penalty System)**, và **Tự động hóa vòng đời trạng thái bằng Robot ngầm (AuctionScheduler)**.
 
@@ -58,8 +58,7 @@
   1. `autoStartAuctions`: Chuyển các phiên từ `SCHEDULED` sang `RUNNING` khi `startTime <= now`.
   2. `autoExpireBuyNowAuctions`: Tự động hết hạn bài Mua Ngay quá 30 ngày.
   3. `processEndedAuctions`: Chốt Winner cho các phiên `RUNNING` có `endTime <= now`, chuyển sang `ENDED` (hoặc `EXPIRED`), tự động sinh bản ghi `Order` ở trạng thái `UNPAID` kèm `paymentDeadline = now + 48h`.
-  4. `backfillMissingOrders`: Tự động bổ sung bản ghi Đơn hàng bị khuyết cho các phiên có Winner.
-  5. `processExpiredUnpaidOrders`: Quét đơn `UNPAID` có `paymentDeadline <= now`, đổi sang `CANCELLED`, phạt `unpaidStrikeCount + 1`, và gán `bannedUntil = now + 90 days` khi đủ 3 gậy.
+  4`processExpiredUnpaidOrders`: Quét đơn `UNPAID` có `paymentDeadline <= now`, đổi sang `CANCELLED`, phạt `unpaidStrikeCount + 1`, và gán `bannedUntil = now + 90 days` khi đủ 3 gậy.
 
 ---
 
@@ -235,16 +234,89 @@ Phân tách văn bản lỗi khỏi mã nguồn Java. Đọc key `ErrorCode` và
 
 ---
 
-### PHÂN HỆ 4: ROBOT SCHEDULER NGẦM & HẬU ĐẤU GIÁ
+### PHÂN HỆ 4: ROBOT SCHEDULER NGẦM & QUY TRÌNH TOÀN DIỆN GIAI ĐOẠN HẬU ĐẤU GIÁ (POST-AUCTION LIFECYCLE)
 
-#### 4.1. Tự động chốt phiên & Sinh đơn hàng hậu đấu giá
-- Ngầm 10s/lần hoặc khi Mua Ngay thành công, chốt Winner, đổi phiên sang `ENDED`, tự động khởi tạo Đơn hàng (`Order`) ở trạng thái `UNPAID` kèm deadline 48 tiếng (`paymentDeadline = now + 48h`).
+#### 4.1. Tổng quan Kiến trúc Quy trình Hậu Đấu Giá (Post-Auction Workflow Narrative)
+Giai đoạn Hậu Đấu Giá (Post-Auction Phase) bao gồm toàn bộ chuỗi các nghiệp vụ tài chính, vận chuyển, giải ngân và xử lý chế tài diễn ra ngay sau khi một phiên thầu chính thức khép lại. Quy trình được vận hành tự động và chặt chẽ theo các bước văn bản sau:
 
-#### 4.2. Tự động hủy đơn bùng tiền 48h & Phạt 3-Strikes
-- Robot quét đơn `UNPAID` quá 48h ➔ Hủy đơn sang `CANCELLED`, phạt `unpaidStrikeCount + 1`. NẾU bùng đủ 3 lần ➔ Cấm 90 ngày (`bannedUntil = now + 90 days`).
+1. **Khởi tạo Đơn hàng Hậu Đấu Giá**: Ngay khi phiên thầu hết giờ (`endTime <= now`) hoặc người mua thực hiện Mua Ngay thành công, hệ thống xác định người trả giá cao nhất (Winner), đổi trạng thái phiên sang `ENDED` và tự động tạo một Đơn hàng (`Order`) mới ở trạng thái chưa thanh toán (`UNPAID`) với thời hạn nộp tiền 48 tiếng.
+2. **Thanh toán & Tạm giữ Escrow**: Người mua vào giao diện đơn hàng trúng thầu để Checkout, nhập địa chỉ nhận hàng và xác nhận thanh toán bằng Ví điện tử. Hệ thống kết nối với `PAYMENT-SERVICE` để trừ tiền ví người mua và giữ tiền tại Tài khoản Trung gian của Sàn (Mô hình Escrow), đổi trạng thái đơn hàng thành đã thanh toán (`PAID`).
+3. **Phục hồi Lỗi Hạ tầng & Gia hạn 24h**: Trường hợp dịch vụ ví `PAYMENT-SERVICE` bị sự cố hoặc nghẽn mạng quá 3 giây, bộ ngắt mạch Resilience4j sẽ chuyển đơn hàng sang trạng thái chờ thử lại (`PAYMENT_PENDING_RETRY`) và tự động gia hạn thêm 24 tiếng. Robot ngầm `AuctionScheduler` sẽ quét định kỳ 10 giây/lần để thanh toán bù tự động khi cổng ví hoạt động trở lại.
+4. **Xuất hàng & Vận chuyển**: Người bán kiểm tra đơn hàng đã `PAID` an toàn, tiến hành giao hàng cho đơn vị vận chuyển và nhập tên nhà vận chuyển cùng mã vận đơn (`trackingNumber`) lên hệ thống, chuyển đơn hàng sang trạng thái đang giao (`SHIPPING`).
+5. **Xác nhận Nhận hàng & Giải ngân**: Người mua nhận hàng, kiểm tra sản phẩm đúng mô tả và bấm nút xác nhận nhận hàng. Đơn hàng đổi sang trạng thái hoàn tất (`COMPLETED`). Ngay lập tức, sàn phát lệnh giải ngân (Payout), chuyển tiền từ tài khoản tạm giữ Escrow cộng thẳng vào ví khả dụng của Người bán (sau khi trừ phí hoa hồng).
+6. **Xử lý Bùng tiền & Chế tài 3 Gậy**: Trường hợp Người mua cố tình bùng tiền quá 48 tiếng, Robot ngầm tự động hủy đơn (`CANCELLED`) và cộng 1 gậy vi phạm cho người mua. Đủ 3 gậy vi phạm sẽ bị khóa tài khoản 90 ngày. Nếu đơn bị quá hạn do lỗi hạ tầng dịch vụ ví quá 24h, đơn hàng bị hủy để bảo vệ người bán nhưng Người mua được miễn phạt gậy.
 
-#### 4.3. Cơ chế Mở khóa Lười (`Lazy Unban Check`)
-- Tại `BidValidator`, khi qua 90 ngày phạt (`bannedUntil <= now`), ở lần bid tiếp theo, hệ thống tự động xóa án cấm và reset gậy về 0.
+---
+
+#### 4.2. Chi Tiết 6 Giai Đoạn Vòng Đời Hậu Đấu Giá
+
+##### 1️⃣ Giai đoạn 1: Chốt Winner & Tự Động Sinh Đơn Hàng (`Order Generation`)
+- **Tác nhân kích hoạt**:
+  - Robot `AuctionScheduler` quét ngầm 10s/lần phát hiện `endTime <= now`.
+  - Hoặc Người mua bấm nút **Mua Ngay (`Buy Now`)** chốt đứt phiên ngay lập tức.
+- **Quy trình xử lý**:
+  - Tra cứu bản ghi `Bid` có `bidAmount` cao nhất trong CSDL (`bidRepository.findTopByAuctionIdOrderByBidAmountDescCreatedAtAsc`).
+  - **Trường hợp có người đặt giá**:
+    - Cập nhật trạng thái phiên thầu: `auction.setStatus(AuctionStatus.ENDED)` và `auction.setWinner(winningBid.getBidder())`.
+    - Tự động sinh bản ghi Đơn hàng (`Order`) ở trạng thái `UNPAID`:
+      - `winningPrice = winningBid.getBidAmount()`
+      - `buyer = winningBid.getBidder()`
+      - `seller = auction.getProduct().getSeller()`
+      - `paymentDeadline = LocalDateTime.now() + 48 hours` (Hạn chót 48 tiếng cho người mua thanh toán).
+  - **Trường hợp không có ai đặt giá**:
+    - Cập nhật trạng thái phiên thầu: `auction.setStatus(AuctionStatus.EXPIRED)` (Phiên hết hạn không người mua).
+
+##### 2️⃣ Giai đoạn 2: Checkout & Thanh Toán Ví Điện Tử (`Wallet Checkout & Escrow Model`)
+- **Tác nhân thực hiện**: Người mua trúng thầu (Buyer).
+- **Endpoint API**: `POST /v1/bidders/{bidderId}/orders/{orderId}/checkout`
+- **Các bước xử lý**:
+  - Validate chính chủ: `OrderValidator.validateCheckout(order, bidderId)` (Chống lỗi hổng IDOR — ném HTTP 403 nếu không phải buyer của đơn).
+  - Kiểm tra trạng thái đơn phải là `UNPAID` hoặc `PAYMENT_PENDING_RETRY`.
+  - Nhập thông tin nhận hàng: `shippingAddress`, `phoneNumber`, `paymentMethod` (`VIRTUAL_WALLET`).
+  - **Tích hợp Microservices**: `AUCTION-SERVICE` sinh `Idempotency-Key` nguyên tử (ví dụ: `PAY_ORDER_102_USER_15`) và gọi sang `PAYMENT-SERVICE` (Port 8082) qua OpenFeign (`paymentFeignClient.processPayment`).
+  - `PAYMENT-SERVICE` khóa hàng Pessimistic Write Lock (`SELECT ... FOR UPDATE`), kiểm tra số dư ví khả dụng của Buyer:
+    - **Trường hợp đủ tiền**: Trừ số dư ví Buyer, dán tiền vào Tài khoản Trung gian (Escrow Sàn), tạo bản ghi `PaymentStatus.SUCCESS`. Đơn hàng chuyển sang **`PAID`**.
+    - **Trường hợp không đủ tiền**: Trả về `INSUFFICIENT_BALANCE`. `AUCTION-SERVICE` báo lỗi *"Ví không đủ tiền, vui lòng nạp thêm!"*. Đơn giữ nguyên `UNPAID` (vẫn đếm ngược 48h).
+
+##### 3️⃣ Giai đoạn 3: Phục Hồi Lỗi Hạ Tầng Êm Ái & Tự Động Gia Hạn 24h (`Resilience4j & Circuit Breaker`)
+- **Bối cảnh**: Cổng ví `PAYMENT-SERVICE` bị sập, quá tải hoặc nghẽn mạng phản hồi > 3 giây.
+- **Cơ chế phục hồi**:
+  - Resilience4j Circuit Breaker ngắt mạch và kích hoạt `PaymentFeignFallback`.
+  - Chuyển trạng thái đơn hàng sang **`PAYMENT_PENDING_RETRY`**.
+  - **Tự động gia hạn 24 tiếng**: `paymentDeadline = paymentDeadline + 24 hours`.
+  - Phản hồi êm ái cho Buyer: *"Dịch vụ Ví đang bảo trì, đơn hàng của bạn đã được gia hạn thêm 24 tiếng để thanh toán lại."*
+- **Robot quét Retry tự động**:
+  - Cứ 10 giây/lần, `AuctionScheduler` quét tối đa **50 đơn/lượt** (`PageRequest.of(0, 50)`) đang ở trạng thái `PAYMENT_PENDING_RETRY` để gọi thanh toán bù. Khi `PAYMENT-SERVICE` hồi phục, đơn tự động chuyển sang `PAID` mà Buyer không phải thao tác lại.
+
+##### 4️⃣ Giai đoạn 4: Người Bán Xuất Hàng & Giao Hàng (`Seller Fulfillment & Shipping`)
+- **Tác nhân thực hiện**: Người bán (Seller).
+- **Endpoint API**: `PUT /v1/sellers/{sellerId}/orders/{orderId}/ship`
+- **Điều kiện & Xử lý**:
+  - Validate chính chủ Seller: `OrderValidator.validateShipOrder(order, sellerId)`.
+  - Đơn hàng BẮT BUỘC phải ở trạng thái **`PAID`** (Tiền đã nằm an toàn ở Escrow Sàn).
+  - Seller nhập tên đơn vị vận chuyển (`courierName`: GHTK, GHN, ViettelPost...) và Mã vận đơn (`trackingNumber`).
+  - Đơn hàng chuyển sang trạng thái **`SHIPPING`**.
+
+##### 5️⃣ Giai đoạn 5: Xác Nhận Nhận Hàng & Giải Ngân Cho Seller (`Confirm Received & Payout`)
+- **Tác nhân thực hiện**: Người mua (Buyer).
+- **Endpoint API**: `PUT /v1/bidders/{bidderId}/orders/{orderId}/confirm-received`
+- **Điều kiện & Xử lý**:
+  - Buyer nhận được hàng, kiểm tra chất lượng, bấm nút **"Xác nhận đã nhận hàng"**.
+  - Đơn hàng chuyển sang trạng thái **`COMPLETED`** (Hoàn tất giao dịch).
+  - **Giải ngân (Payout)**: `AUCTION-SERVICE` phát lệnh sang `PAYMENT-SERVICE` giải ngân tiền đang tạm giữ tại Escrow Sàn cộng thẳng vào Ví khả dụng của Seller (sau khi trừ % phí hoa hồng sàn).
+
+##### 6️⃣ Giai đoạn 6: Tự Động Hủy Đơn Bùng Tiền & Chế Tài Phạt 3 Gậy Vi Phạm (`Unpaid Expiration & 3-Strikes Penalty`)
+- **Tác nhân thực hiện**: Robot `AuctionScheduler` chạy ngầm 10s/lần.
+- **Quy tắc xử phạt công bằng (Business Fairness)**:
+  - **Trường hợp 1 - Khách cố tình bùng tiền**: Đơn `UNPAID` quá 48h (`paymentDeadline <= now`):
+    - Chuyển đơn sang **`CANCELLED`**.
+    - Phạt tăng gậy vi phạm của Buyer: `unpaidStrikeCount = unpaidStrikeCount + 1`.
+    - **Chế tài 3 Gậy (3-Strikes Rule)**: Nếu `unpaidStrikeCount >= 3` ➔ Khóa tài khoản 90 ngày (`user.setStatus(BANNED)` và `bannedUntil = LocalDateTime.now() + 90 days`).
+  - **Trường hợp 2 - Lỗi hệ thống**: Đơn `PAYMENT_PENDING_RETRY` quá 24h gia hạn nhưng `PAYMENT-SERVICE` vẫn sập:
+    - Chuyển đơn sang **`CANCELLED`**.
+    - **MIỄN PHẠT GẬY**: Không tăng `unpaidStrikeCount` vì đây là lỗi hệ thống, không phải lỗi của người mua.
+- **Cơ chế Mở khóa Lười (`Lazy Unban Check`)**:
+  - Khi người dùng bị cấm đủ 90 ngày (`bannedUntil <= now`), ở lần đặt giá tiếp theo, `BidValidator` tự động xóa án phạt, chuyển status về `ACTIVE` và reset `unpaidStrikeCount = 0`.
 
 ---
 
@@ -296,4 +368,4 @@ src/main/java/com/duong/auction/system
 ---
 
 > [!NOTE]
-> Báo cáo Markdown này bao phủ **100% toàn bộ cấu trúc kiến trúc, nghiệp vụ bài toán, API Endpoints, State Machine, Bảo mật JWT và thiết kế CSDL** của dự án Backend `DuAnTrainning.AuctionSystem`.
+> Báo cáo Markdown này bao phủ **100% toàn bộ cấu trúc kiến trúc, nghiệp vụ bài toán, API Endpoints, State Machine, Bảo mật JWT và thiết kế CSDL** của dự án Backend Microservices `AuctionSystem`.

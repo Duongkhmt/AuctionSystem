@@ -50,7 +50,7 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 # 3. GIẢI THÍCH CHI TIẾT TỪNG FILE ĐÃ TẠO
 
-### 1. File [`AuctionSystemApplication.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/AuctionSystemApplication.java)
+### 1. File [`AuctionSystemApplication.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/AuctionSystemApplication.java)
 - **Nhiệm vụ:** Kích hoạt nạp tự động toàn bộ biến môi trường từ file `.env` vào System Properties khi ứng dụng vừa bật:
   ```java
   Dotenv dotenv = Dotenv.configure().ignoreIfMissing().load();
@@ -59,7 +59,7 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 ---
 
-### 2. File [`KafkaConfig.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/config/KafkaConfig.java)
+### 2. File [`KafkaConfig.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/config/KafkaConfig.java)
 - **Nhiệm vụ:** Cấu hình khởi tạo Topic và **Cơ chế Xử Lý Lỗi 3 Tầng**:
   - **Topic Chính:** `auction.events.ended` (3 partitions).
   - **Topic Retry (`auction.events.ended-retry`):** Thử lại 3 lần (cách 2000ms) nếu CSDL/SMTP bị bận tạm thời.
@@ -67,30 +67,30 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 ---
 
-### 3. File [`AuctionKafkaProducer.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/producer/AuctionKafkaProducer.java)
+### 3. File [`AuctionKafkaProducer.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/producer/AuctionKafkaProducer.java)
 - **Nhiệm vụ:** Bưu tá phát sự kiện lên Kafka kèm Partition Key:
   - Dùng `String.valueOf(event.getAuctionId())` làm Partition Key ➔ Đảm bảo toàn bộ sự kiện của 1 phiên đấu giá đi vào cùng 1 Partition (Thứ tự FIFO tuyệt đối).
   - Dùng `CompletableFuture.whenComplete()` để bắt phản hồi bất đồng bộ từ Broker.
 
 ---
 
-### 4. File [`AuctionEndedSettlementHelper.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/helper/AuctionEndedSettlementHelper.java)
+### 4. File [`AuctionEndedSettlementHelper.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/helper/AuctionEndedSettlementHelper.java)
 - **Nhiệm vụ:** Chốt trạng thái phiên thầu trong giao dịch DB độc lập `@Transactional(propagation = Propagation.REQUIRES_NEW)`.
 - **Chống Dual-Write:** Dùng `TransactionSynchronizationManager.registerSynchronization(afterCommit)` ➔ CHỈ BẮN KAFKA KHI CSDL ĐÃ COMMIT THÀNH CÔNG!
 
 ---
 
-### 5. File [`AuctionEndedConsumer.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/consumer/AuctionEndedConsumer.java)
+### 5. File [`AuctionEndedConsumer.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/consumer/AuctionEndedConsumer.java)
 - **Nhiệm vụ:** Nhặt tin nhắn sự kiện `AUCTION_ENDED` ➔ Check Redis Idempotency (`kafka:processed_event:<eventId>`) ➔ Lưu Đơn hàng 48h vào CSDL ➔ Gọi `EmailService.sendAuctionWinnerEmail` phát Email thông báo ngầm cho Winner ➔ Đánh dấu `PROCESSED` vào Redis.
 
 ---
 
-### 6. File [`EmailService.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/EmailService.java)
+### 6. File [`EmailService.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/EmailService.java)
 - **Nhiệm vụ:** Phát Email thông báo thắng thầu qua Gmail SMTP dạng Plain Text Multiline (`String.format`). Lấy cấu hình `@Value("${app.mail.from}")` đóng gói từ `.env`.
 
 ---
 
-### 7. File [`AuctionScheduler.java`](file:///home/duong/Projects/Backend/DuAnTrainning/src/main/java/com/duong/auction/system/service/AuctionScheduler.java)
+### 7. File [`AuctionScheduler.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/AuctionScheduler.java)
 - **Nhiệm vụ:** Robot 10s/lần quét DB chốt phiên thầu. Thêm `@CacheEvict(value = "auctions", allEntries = true)` để dọn sạch bản cache rác trong Redis khi đổi trạng thái ➔ Khắc phục triệt để lỗi lệch trạng thái "SẮP DIỄN RA" / "ĐANG ĐẤU GIÁ" giữa trang ngoài và trang chi tiết.
 
 ---
