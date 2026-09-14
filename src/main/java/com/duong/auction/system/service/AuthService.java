@@ -28,6 +28,9 @@ import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -56,83 +59,107 @@ public class AuthService {
      */
     @Transactional
     public UserResponseDTO register(RegisterRequestDTO request) {
+        // 1. Kiểm tra Email đã tồn tại chưa
         if (userRepository.existsByEmail(request.getEmail())) {
             throw new ApplicationException(ErrorCode.EMAIL_ALREADY_EXISTS);
         }
+        // 2. Kiểm tra Username đã tồn tại chưa
         if (userRepository.existsByUsername(request.getUsername())) {
             throw new ApplicationException(ErrorCode.USERNAME_ALREADY_EXISTS);
         }
-
+        // 3. Mã hóa mật khẩu bằng BCrypt và lưu User mới xuống PostgreSQL
         String encodedPassword = passwordEncoder.encode(request.getPassword());
         User user = userMapper.toEntity(request, encodedPassword);
         userRepository.save(user);
-
+        // 4. Tự động đăng nhập cho User vừa tạo tài khoản thành công
         LoginRequestDTO loginRequest = new LoginRequestDTO();
         loginRequest.setEmail(request.getEmail());
         loginRequest.setPassword(request.getPassword());
-
+        // 🚀 Gọi trực tiếp hàm login() bên dưới!
         return login(loginRequest);
     }
 
     /**
      * 🟢 2. ĐĂNG NHẬP
      */
+
+    private String hashToken(String rawToken) {
+        if (rawToken == null) return null;
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            byte[] hashBytes = digest.digest(rawToken.getBytes(StandardCharsets.UTF_8));
+            StringBuilder hexString = new StringBuilder();
+            for (byte b : hashBytes) {
+                String hex = Integer.toHexString(0xff & b);
+                if (hex.length() == 1) hexString.append('0');
+                hexString.append(hex);
+            }
+            return hexString.toString();
+        } catch (NoSuchAlgorithmException e) {
+            log.error("Không tìm thấy thuật toán SHA-256", e);
+            throw new ApplicationException(ErrorCode.UNCATEGORIZED_EXCEPTION);
+        }
+    }
+
     public UserResponseDTO login(LoginRequestDTO request) {
         Authentication authentication = authenticationManager.authenticate(
                 new UsernamePasswordAuthenticationToken(request.getEmail(), request.getPassword())
         );
-
         User user = userRepository.findByEmail(request.getEmail())
                 .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
-
         if (user.getStatus() != UserStatus.ACTIVE) {
             throw new ApplicationException(ErrorCode.USER_BANNED_FROM_BIDDING);
         }
-
         String accessToken = tokenProvider.generateToken(authentication);
-        String refreshToken = UUID.randomUUID().toString();
 
-        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + request.getEmail(), refreshToken, refreshExpirationDays, TimeUnit.DAYS);
-        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + refreshToken, request.getEmail(), refreshExpirationDays, TimeUnit.DAYS);
+        // 1. Sinh chuỗi UUID thô gửi về cho Client
+        String rawRefreshToken = UUID.randomUUID().toString();
+
+        // 2. Băm SHA-256 chuỗi UUID trước khi lưu lên Redis
+        String hashedRefreshToken = hashToken(rawRefreshToken);
+        // 3. Ghi bản băm lên Redis RAM (An toàn tuyệt đối nếu Redis bị rò rỉ)
+        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + request.getEmail(), hashedRefreshToken, refreshExpirationDays, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + hashedRefreshToken, request.getEmail(), refreshExpirationDays, TimeUnit.DAYS);
         redisTemplate.opsForValue().set(SecurityConstants.USER_STATUS_KEY_PREFIX + request.getEmail(), user.getStatus().name(), refreshExpirationDays, TimeUnit.DAYS);
-
-        return userMapper.toUserResponseDTO(user, accessToken, refreshToken);
+        // 4. Trả chuỗi UUID thô (rawRefreshToken) cho Client lưu giữ
+        return userMapper.toUserResponseDTO(user, accessToken, rawRefreshToken);
     }
 
     /**
      * 🟢 3. REFRESH TOKEN (ROTATION + RESET TTL + CHECK REAL-TIME STATUS)
      */
     public UserResponseDTO refreshToken(RefreshTokenRequestDTO request) {
-        String oldRefreshToken = request.getRefreshToken();
-        String email = redisTemplate.opsForValue().get(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldRefreshToken);
+        String oldRawRefreshToken = request.getRefreshToken();
 
+        // 1. Băm chuỗi token cũ do Client gửi lên
+        String oldHashedToken = hashToken(oldRawRefreshToken);
+
+        // 2. Tra cứu email bằng bản băm oldHashedToken trên Redis
+        String email = redisTemplate.opsForValue().get(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldHashedToken);
         if (email == null) {
             throw new ApplicationException(ErrorCode.UNAUTHENTICATED);
         }
-
         User user = userRepository.findByEmail(email)
                 .orElseThrow(() -> new ApplicationException(ErrorCode.USER_NOT_FOUND));
-
         if (user.getStatus() != UserStatus.ACTIVE) {
             redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
-            redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldRefreshToken);
+            redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldHashedToken);
             throw new ApplicationException(ErrorCode.USER_BANNED_FROM_BIDDING);
         }
-
-        // ROTATION: Xóa Refresh Token cũ
-        redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldRefreshToken);
-
-        // Nạp UserDetails và Authorities (ROLE_USER / ROLE_ADMIN) tránh mất quyền
+        // 3. ROTATION: Xóa bản băm Refresh Token cũ trên Redis
+        redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + oldHashedToken);
         UserDetails userDetails = customUserDetailsService.loadUserByUsername(email);
         Authentication authentication = new UsernamePasswordAuthenticationToken(userDetails, null, userDetails.getAuthorities());
-
         String newAccessToken = tokenProvider.generateToken(authentication);
-        String newRefreshToken = UUID.randomUUID().toString();
 
-        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email, newRefreshToken, refreshExpirationDays, TimeUnit.DAYS);
-        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + newRefreshToken, email, refreshExpirationDays, TimeUnit.DAYS);
-
-        return userMapper.toUserResponseDTO(user, newAccessToken, newRefreshToken);
+        // 4. Sinh token mới & Băm SHA-256 token mới
+        String newRawRefreshToken = UUID.randomUUID().toString();
+        String newHashedToken = hashToken(newRawRefreshToken);
+        // 5. Ghi bản băm mới lên Redis RAM
+        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email, newHashedToken, refreshExpirationDays, TimeUnit.DAYS);
+        redisTemplate.opsForValue().set(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + newHashedToken, email, refreshExpirationDays, TimeUnit.DAYS);
+        // 6. Trả chuỗi UUID thô mới (newRawRefreshToken) về cho Client
+        return userMapper.toUserResponseDTO(user, newAccessToken, newRawRefreshToken);
     }
 
     /**
@@ -143,25 +170,22 @@ public class AuthService {
         if (auth == null || !auth.isAuthenticated() || "anonymousUser".equals(auth.getName())) {
             throw new ApplicationException(ErrorCode.UNAUTHENTICATED);
         }
-
         String email = auth.getName();
         String authHeader = request.getHeader(SecurityConstants.HEADER_AUTHORIZATION);
-
         if (authHeader != null && authHeader.startsWith(SecurityConstants.TOKEN_PREFIX)) {
-            String refreshToken = redisTemplate.opsForValue().get(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
-            if (refreshToken != null) {
+            // Lấy bản băm hashedToken từ key email ra để xóa key ngược refresh_token_user
+            String hashedToken = redisTemplate.opsForValue().get(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
+            if (hashedToken != null) {
                 redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_KEY_PREFIX + email);
-                redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + refreshToken);
+                redisTemplate.delete(SecurityConstants.REFRESH_TOKEN_USER_KEY_PREFIX + hashedToken);
             }
             long currentTimestamp = System.currentTimeMillis();
             redisTemplate.opsForValue().set(SecurityConstants.USER_LOGOUT_AT_KEY_PREFIX + email, String.valueOf(currentTimestamp), refreshExpirationDays, TimeUnit.DAYS);
-
             User user = userRepository.findByEmail(email).orElse(null);
             if (user != null) {
                 user.setLastLogoutAt(LocalDateTime.now(DateTimeConfig.DEFAULT_ZONE));
                 userRepository.save(user);
             }
-
             SecurityContextHolder.clearContext();
             log.info("Đã đăng xuất thành công cho tài khoản Email: {}", email);
         }

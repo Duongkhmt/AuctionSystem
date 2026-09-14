@@ -1,6 +1,10 @@
 package com.duong.auction.system.config;
 
-// Các thư viện Spring Boot cung cấp
+import com.fasterxml.jackson.annotation.JsonTypeInfo;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.SerializationFeature;
+import com.fasterxml.jackson.databind.jsontype.impl.LaissezFaireSubTypeValidator;
+import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
 import org.redisson.Redisson;
 import org.redisson.api.RedissonClient;
 import org.redisson.config.Config;
@@ -10,6 +14,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.data.redis.cache.RedisCacheConfiguration;
 import org.springframework.data.redis.cache.RedisCacheManager;
 import org.springframework.data.redis.connection.RedisConnectionFactory;
+import org.springframework.data.redis.serializer.GenericJackson2JsonRedisSerializer;
 import org.springframework.data.redis.serializer.RedisSerializationContext;
 import org.springframework.data.redis.serializer.RedisSerializer;
 
@@ -23,40 +28,44 @@ public class RedisConfig {
 
     @Bean // [3] Đăng ký hàm này thành 1 Bean để Spring tự động quản lý trong bộ nhớ
     public RedisCacheManager cacheManager(RedisConnectionFactory connectionFactory) {
-        // 'connectionFactory': Spring tự đọc IP/Port (localhost:6379) từ application.properties
-        // để mở đường ống kết nối xuống Redis Server.
+        // [CẤU HÌNH JACKSON OBJECTMAPPER CHO REDIS SERIALIZATION (HỖ TRỢ LOCALDATETIME)]
+        ObjectMapper objectMapper = new ObjectMapper();
+        objectMapper.registerModule(new JavaTimeModule());
+        objectMapper.disable(SerializationFeature.WRITE_DATES_AS_TIMESTAMPS);
+        objectMapper.activateDefaultTyping(
+                LaissezFaireSubTypeValidator.instance,
+                ObjectMapper.DefaultTyping.NON_FINAL,
+                JsonTypeInfo.As.PROPERTY
+        );
+
+        GenericJackson2JsonRedisSerializer jsonSerializer = new GenericJackson2JsonRedisSerializer(objectMapper);
 
         // -----------------------------------------------------------------------------------
         // KHỐI 1: THIẾT LẬP CẤU HÌNH MẶC ĐỊNH CHO TẤT CẢ CÁC CACHE
         // -----------------------------------------------------------------------------------
         RedisCacheConfiguration defaultConfig = RedisCacheConfiguration.defaultCacheConfig()
-                .entryTtl(Duration.ofMinutes(5)) // [4] Tờ giấy nháp nào không dặn gì thì mặc định tự xóa sau 5 phút
+                .entryTtl(Duration.ofMinutes(5)) // [4] Mặc định tự xóa sau 5 phút
                 .serializeKeysWith(
                         RedisSerializationContext.SerializationPair.fromSerializer(RedisSerializer.string())
-                ) // [5] Ép tên Key lưu dưới dạng chữ Plain Text sạch đẹp (ví dụ: "bid_history::101")
+                ) // [5] Ép tên Key lưu dưới dạng chữ Plain Text
                 .serializeValuesWith(
-                        RedisSerializationContext.SerializationPair.fromSerializer(RedisSerializer.json())
-                ); // [6] Ép dữ liệu Value lưu dưới dạng văn bản JSON chuẩn
+                        RedisSerializationContext.SerializationPair.fromSerializer(jsonSerializer)
+                ); // [6] Ép dữ liệu Value lưu dưới dạng văn bản JSON có Jackson JavaTimeModule
 
         // -----------------------------------------------------------------------------------
         // KHỐI 2: THIẾT LẬP THỜI GIAN SỐNG (TTL) RIÊNG CHO TỪNG LOẠI DỮ LIỆU
         // -----------------------------------------------------------------------------------
         Map<String, RedisCacheConfiguration> cacheConfigs = new HashMap<>();
-
-        // [7] Riêng vùng "bid_history" (Lịch sử đặt giá): Ép thời gian sống ngắn lại (chỉ 30 giây)
         cacheConfigs.put("bid_history", defaultConfig.entryTtl(Duration.ofSeconds(30)));
-
-        // [8] Riêng vùng "categories" (Danh mục sản phẩm): Ép thời gian sống dài (24 giờ)
-        // Vì danh mục sản phẩm rất ít khi thay đổi
         cacheConfigs.put("categories", defaultConfig.entryTtl(Duration.ofHours(24)));
 
         // -----------------------------------------------------------------------------------
         // KHỐI 3: ĐÓNG GÓI VÀ BÀN GIAO CHO SPRING BOOT
         // -----------------------------------------------------------------------------------
         return RedisCacheManager.builder(connectionFactory)
-                .cacheDefaults(defaultConfig) // Áp dụng cấu hình mặc định
-                .withInitialCacheConfigurations(cacheConfigs) // Áp dụng các cấu hình riêng (như 30s của bid_history)
-                .build(); // Hoàn tất khởi tạo Trưởng phòng Quản lý Cache!
+                .cacheDefaults(defaultConfig)
+                .withInitialCacheConfigurations(cacheConfigs)
+                .build();
     }
 
     //Bean RedissonClient kết nối Redis phục vụ Khóa Phân Tán (Distributed Lock)
@@ -67,3 +76,4 @@ public class RedisConfig {
         return Redisson.create(config);
     }
 }
+

@@ -41,13 +41,14 @@ public class JwtTokenProvider {
 
     // 🟢 2. HÀM TẠO JWT TOKEN CHỨA EMAIL (Thời hạn 10 phút)
     public String generateToken(Authentication authentication) {
-        String email = authentication.getName(); // Email định danh của người dùng
+        UserCustomDetails userDetails = (UserCustomDetails) authentication.getPrincipal();
         // 🟢 Dùng java.time.Instant hiện đại của Java 21 -> Chuyển sang Date cho JJWT
         Instant now = Instant.now();
         Instant expiryDate = now.plusMillis(jwtExpirationMs);
 
         return Jwts.builder()
-                .setSubject(email)
+                .setSubject(userDetails.getUsername())
+                .claim("userId", userDetails.getUser().getId())
                 .setIssuedAt(Date.from(now))
                 .setExpiration(Date.from(expiryDate))
                 .signWith(cachedSecretKey, SignatureAlgorithm.HS256)
