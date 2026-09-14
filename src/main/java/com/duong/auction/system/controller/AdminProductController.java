@@ -6,7 +6,10 @@ import com.duong.auction.system.dto.request.UserStatusUpdateRequestDTO;
 import com.duong.auction.system.dto.response.AdminUserResponseDTO;
 import com.duong.auction.system.dto.response.CategoryResponseDTO;
 import com.duong.auction.system.dto.response.ProductResponseDTO;
+import com.duong.auction.system.dto.response.SellerOrderResponseDTO;
+import com.duong.auction.system.enums.OrderStatus;
 import com.duong.auction.system.service.CategoryService;
+import com.duong.auction.system.service.OrderService;
 import com.duong.auction.system.service.ProductService;
 import com.duong.auction.system.service.UserService;
 import jakarta.validation.Valid;
@@ -28,6 +31,7 @@ public class AdminProductController {
     private final ProductService productService;
     private final CategoryService categoryService;
     private final UserService userService;
+    private final OrderService orderService;
 
 
     // =========================================================================
@@ -135,5 +139,19 @@ public class AdminProductController {
             @Valid @RequestBody UserStatusUpdateRequestDTO requestDTO
     ) {
         return ResponseEntity.ok(userService.updateUserStatus(id, requestDTO));
+    }
+
+    // =========================================================================
+    // 4. NHÓM API QUẢN LÝ ĐƠN HÀNG & KÉT ESCROW SÀN (ESCROW & ORDERS)
+    // =========================================================================
+    /**
+     * API 4.1: Admin xem danh sách tất cả các đơn hàng toàn hệ thống để quản lý Két Escrow Sàn.
+     * Endpoint: GET /v1/admin/products/orders
+     */
+    @GetMapping("/orders")
+    public ResponseEntity<List<SellerOrderResponseDTO>> getAdminOrders(
+            @RequestParam(required = false) OrderStatus status
+    ) {
+        return ResponseEntity.ok(orderService.getAdminOrders(status));
     }
 }

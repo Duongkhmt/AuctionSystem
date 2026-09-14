@@ -121,6 +121,24 @@ public class OrderService {
         order.setStatus(OrderStatus.COMPLETED);
         orderRepository.save(order);
 
+        // Kích hoạt giải ngân Escrow về Ví cho Người bán (Seller)
+        String idempotencyKey = "DISBURSE_ORDER_" + order.getId() + "_" + order.getSeller().getId();
+        com.duong.auction.system.dto.request.DisburseRequestDTO disburseRequest = com.duong.auction.system.dto.request.DisburseRequestDTO.builder()
+                .orderId(order.getId())
+                .sellerId(order.getSeller().getId())
+                .amount(order.getWinningPrice())
+                .build();
+        paymentFeignClient.disbursePayment(idempotencyKey, disburseRequest);
+
         return orderResponseHelper.buildWonAuctionDTO(order);
+    }
+
+    // API 6: ADMIN TRUY VẤN TOÀN BỘ ĐƠN HÀNG TOÀN HỆ THỐNG ĐỂ QUẢN LÝ KÉT ESCROW & DÒNG TIỀN
+    @Transactional(readOnly = true)
+    public List<SellerOrderResponseDTO> getAdminOrders(OrderStatus status) {
+        List<Order> orders = (status != null)
+                ? orderRepository.findByStatusOrderByCreatedAtDesc(status)
+                : orderRepository.findByOrderByCreatedAtDesc();
+        return orderResponseHelper.buildSellerOrderDTOList(orders);
     }
 }

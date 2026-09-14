@@ -23,4 +23,16 @@ public class PaymentFeignFallback implements PaymentFeignClient {
                 .paymentDeadlineExtended(true)
                 .build();
     }
+
+    @Override
+    public PaymentResponseDTO disbursePayment(String idempotencyKey, com.duong.auction.system.dto.request.DisburseRequestDTO request) {
+        log.warn("⚠️ [Circuit Breaker Fallback] PAYMENT-SERVICE bị sập! Không thể giải ngân cho OrderID: {}", 
+                request != null ? request.getOrderId() : "N/A");
+
+        return PaymentResponseDTO.builder()
+                .status(PaymentStatus.PENDING_RETRY)
+                .errorCode(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE.name())
+                .message(ErrorCode.PAYMENT_SERVICE_UNAVAILABLE.getMessage())
+                .build();
+    }
 }

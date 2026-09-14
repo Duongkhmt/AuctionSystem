@@ -50,5 +50,11 @@ public interface OrderRepository extends JpaRepository<Order, Long> {
     @Query("SELECT o.auction.id FROM Order o WHERE o.auction.id IN :auctionIds")
     Set<Long> findAuctionIdsByAuctionIdIn(@Param("auctionIds") Collection<Long> auctionIds);
 
+    // 5. Admin: Truy vấn toàn bộ danh sách đơn hàng toàn hệ thống để quản lý Két Escrow Sàn
+    @EntityGraph(attributePaths = {"product", "product.images", "buyer", "seller"})
+    List<Order> findByOrderByCreatedAtDesc();
+
+    @EntityGraph(attributePaths = {"product", "product.images", "buyer", "seller"})
+    List<Order> findByStatusOrderByCreatedAtDesc(OrderStatus status);
 }
 

@@ -15,4 +15,10 @@ public interface PaymentFeignClient {
             @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey,
             @RequestBody PaymentRequestDTO request
     );
+
+    @PostMapping("/v1/payments/disburse-seller")
+    PaymentResponseDTO disbursePayment(
+            @RequestHeader(value = "Idempotency-Key", required = true) String idempotencyKey,
+            @RequestBody com.duong.auction.system.dto.request.DisburseRequestDTO request
+    );
 }
