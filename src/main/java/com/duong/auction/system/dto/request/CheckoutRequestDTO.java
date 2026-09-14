@@ -18,7 +18,7 @@ public class CheckoutRequestDTO implements Serializable {
     private String shippingAddress;
 
     @NotBlank(message = "Số điện thoại nhận hàng không được để rỗng")
-    @Pattern(regexp = "^(0[3|5|7|8|9])+([0-9]{8})$", message = "Số điện thoại giao hàng không đúng định dạng Việt Nam")
+    @Pattern(regexp = "^(0[35789])[0-9]{8}$", message = "Số điện thoại giao hàng không đúng định dạng Việt Nam (10 chữ số)")
     private String phoneNumber;
 
     @NotNull(message = "Vui lòng chọn phương thức thanh toán")
