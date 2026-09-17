@@ -44,14 +44,14 @@ Khi triển khai hệ thống phân tán chịu tải cao, kiến trúc phải g
 
 ---
 
-### 💥 Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
+### Kịch Bản 1: Dịch Vụ Bên Thứ 3 Bị Chậm Hoặc Tạm Thời Gián Đoạn (Transient Infrastructure Failure)
 - **Tình huống:** Máy chủ gửi Email (Gmail SMTP / SendGrid) bị quá tải hoặc chập chờn mạng trong khoảng 3 đến 5 giây.
 - **Hậu quả nếu xử lý kém:** Hàng chục email thông báo trúng thầu bị bốc hơi. Người thắng thầu không nhận được thông báo để vào thanh toán đơn hàng trong thời hạn 48h.
 - **Giải pháp lập trình:** Sử dụng **Non-Blocking Retry Topic** (`auction.events.ended-retry`) với cơ chế Fixed Backoff 2 giây và thử lại tối đa 3 lần.
 
 ---
 
-### 💥 Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
+### Kịch Bản 2: Sự Cố "Viên Thuốc Độc" (Poison Pill Message)
 - **Tình huống:** Một tin nhắn sự kiện `AUCTION_ENDED` bị lỗi cấu trúc dữ liệu (ví dụ: thiếu thông tin ID người thắng, hoặc sai định dạng số) do lỗi code hoặc sai lệch schema.
 - **Hậu quả nếu xử lý kém:** Phía Consumer đọc phải tin nhắn hỏng này và ném Exception liên tục. Nếu thử lại vô hạn tại chỗ (Infinite Retry Loop) $\rightarrow$ **Toàn bộ băng chuyền Kafka Consumer bị kẹt cứng, hàng vạn tin nhắn của các phiên đấu giá hợp lệ phía sau không thể tiến lên!**
 - **Giải pháp lập trình:** Chuyển hướng tin nhắn hỏng sang **Dead Letter Topic (DLT)** (`auction.events.ended-dlt`) sau 3 lần thử thất bại, kích hoạt `@DltHandler` để log cảnh báo cho Admin kiểm tra thủ công.
@@ -65,7 +65,7 @@ Khi triển khai hệ thống phân tán chịu tải cao, kiến trúc phải g
 
 ---
 
-### 💥 Kịch Bản 4: Bùng Nổ Tải Phút Chót & Rủi Ro Dual-Write (High Throughput Spike)
+### Kịch Bản 4: Bùng Nổ Tải Phút Chót & Rủi Ro Dual-Write (High Throughput Spike)
 - **Tình huống:** Vào khung giờ cao điểm, có **1.000 phiên đấu giá cùng kết thúc tại đúng 1 giây**.
 - **Hậu quả nếu xử lý kém:** Quá tải CPU/RAM và rủi ro Dual-Write khi chốt đơn.
 - **Giải pháp lập trình:**
@@ -246,7 +246,7 @@ public class AuctionKafkaProducer {
 
 ---
 
-## 📥 THÀNH PHẦN 4: KAFKA CONSUMER, REDIS IDEMPOTENCY & DLT HANDLER (`AuctionEndedConsumer.java`)
+## THÀNH PHẦN 4: KAFKA CONSUMER, REDIS IDEMPOTENCY & DLT HANDLER (`AuctionEndedConsumer.java`)
 
 Consumer thực hiện tiêu thụ sự kiện, kiểm tra chống trùng lặp qua Redis, tạo Đơn hàng 48h, gửi email ngầm và tiếp nhận Poison Pill tại `@DltHandler`:
 
@@ -322,12 +322,12 @@ public class AuctionEndedConsumer {
 
 ```text
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 🤖 AuctionScheduler (Chạy ngầm định kỳ 10s/lần)                   │
+       │  AuctionScheduler (Chạy ngầm định kỳ 10s/lần)                   │
        └────────────────────────────────┬─────────────────────────────────┘
                                         │
                                         ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 🛠️ AuctionEndedSettlementHelper (Transaction REQUIRES_NEW)        │
+       │ AuctionEndedSettlementHelper (Transaction REQUIRES_NEW)        │
        │ 1. Cập nhật Auction.status = ENDED & Winner vào PostgreSQL        │
        │ 2. Đăng ký Synchronization Hook afterCommit()                    │
        └────────────────────────────────┬─────────────────────────────────┘
@@ -336,27 +336,27 @@ public class AuctionEndedConsumer {
                                         │
                                         ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 🚀 AuctionKafkaProducer                                          │
+       │ AuctionKafkaProducer                                          │
        │ Bắn AuctionEndedEvent (Partition Key = auctionId)                │
        └────────────────────────────────┬─────────────────────────────────┘
                                         │
                                         ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 🟢 TOPIC CHÍNH: auction.events.ended (3 Partitions)              │
+       │TOPIC CHÍNH: auction.events.ended (3 Partitions)              │
        └────────────────────────┬─────────────────────────────────────────┘
                                 │
                       (Nhận sự kiện bởi Consumer)
                                 │
                                 ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 📥 AuctionEndedConsumer                                          │
+       │ AuctionEndedConsumer                                          │
        │ 1. Read Redis Check: kafka:processed_event:{eventId}             │
        │    ├─► [Đã tồn tại] ──► SKIP (Chống ghi trùng)                   │
        │    └─► [Chưa tồn tại] ──► Tạo Order UNPAID (48h) + Gửi Email     │
        │ 2. Write Redis: kafka:processed_event:{eventId} = PROCESSED (24h)│
        └────────────────────────┬─────────────────────────────────────────┘
                                 │
-                     ❌ (Gặp Exception / Timeout)
+                     (Gặp Exception / Timeout)
                                 │
                                 ▼ (Sau 2 giây)
        ┌──────────────────────────────────────────────────────────────────┐
@@ -364,11 +364,11 @@ public class AuctionEndedConsumer {
        │ - Thử lại tối đa 3 lần (Fixed Backoff = 2000ms)                  │
        └────────────────────────┬─────────────────────────────────────────┘
                                 │
-                     ❌ (Vẫn thất bại sau 3 lần)
+                     (Vẫn thất bại sau 3 lần)
                                 │
                                 ▼
        ┌──────────────────────────────────────────────────────────────────┐
-       │ 🔴 TOPIC DLT: auction.events.ended-dlt                           │
+       │ TOPIC DLT: auction.events.ended-dlt                           │
        │ - Kích hoạt @DltHandler log [KAFKA DLT ALERT]                    │
        │ - Cô lập tin nhắn hỏng, Admin kiểm tra và Replay                 │
        │ - Băng chuyền chính chạy tiếp 100% không bị tắc nghẽn             │

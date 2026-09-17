@@ -14,7 +14,7 @@ Nếu ta bắt Robot `AuctionScheduler` vừa đổi trạng thái phiên thầu
 
 ---
 
-### 🟢 Giải pháp Kafka (Bất đồng bộ - Asynchronous Event-Driven):
+### Giải pháp Kafka (Bất đồng bộ - Asynchronous Event-Driven):
 Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 - Luồng chính (`AuctionScheduler`) chỉ làm đúng việc chốt trạng thái phiên thầu sang `ENDED` trong CSDL ➔ Đăng ký phát sự kiện `AuctionEndedEvent` lên Kafka qua `TransactionSynchronization.afterCommit`. Robot rảnh tay ngay lập tức để phục vụ các phiên khác.
 - Phía Consumer ngầm (`AuctionEndedConsumer`) nhặt sự kiện từ Kafka và **tự động đẻ bản ghi `Order` 48h vào DB ngầm + Phát Email thông báo trúng thầu** phía sau.
@@ -97,22 +97,22 @@ Sử dụng Apache Kafka để **TÁCH RỜI 100% (Decoupling)**:
 
 # 4. CÁC KỊCH BẢN RỦI RO THỰC TẾ & GIẢI PHÁP ĐÃ XỬ LÝ
 
-### 🎬 Kịch Bản 1: Chốt Phiên Hàng Loạt Khi Hết Giờ (Batch Settlement)
+### Kịch Bản 1: Chốt Phiên Hàng Loạt Khi Hết Giờ (Batch Settlement)
 - **Vấn đề:** 100 phiên đấu giá cùng kết thúc một lúc. Nếu xử lý đồng bộ, Robot bị ngâm 2-3 phút gửi Email.
 - **Giải pháp:** Robot chốt CSDL rồi đẩy qua Kafka (`auction.events.ended`). Consumer ngầm tự động đẻ đơn hàng và gửi Email ngầm ở Background mà không làm đứng Robot.
 
-### 🎬 Kịch Bản 2: Mất Đồng Bộ DB vs Kafka (Dual-Write Discrepancy)
+### Kịch Bản 2: Mất Đồng Bộ DB vs Kafka (Dual-Write Discrepancy)
 - **Vấn đề:** DB chốt phiên chưa lưu xong nhưng Kafka đã lỡ bắn tin nhắn ➔ Đẻ ra Đơn hàng ma và Email giả nếu DB Rollback!
 - **Giải pháp:** Dùng `TransactionSynchronizationManager.afterCommit` trong `AuctionEndedSettlementHelper.java`. CHỈ BẮN KAFKA KHI CSDL THỰC SỰ COMMIT THÀNH CÔNG.
 
-### 🎬 Kịch Bản 3: Mạng Chập Chờn Khiến Kafka Phát Lại Tin Nhắn (Message Replay)
+### Kịch Bản 3: Mạng Chập Chờn Khiến Kafka Phát Lại Tin Nhắn (Message Replay)
 - **Vấn đề:** Consumer tạo Đơn hàng xong nhưng rớt mạng chưa gửi Ack ➔ Kafka phát lại tin nhắn lần 2 ➔ Bị đẻ 2 đơn hàng trùng và gửi 2 Email.
 - **Giải pháp:** Áp dụng cơ chế **Redis Idempotency Check 3 bước** (`kafka:processed_event:<eventId>`, TTL 24h). Dù Kafka phát lại 10 lần thì CSDL vẫn chỉ có đúng 1 Đơn hàng và Winner chỉ nhận 1 Email.
 
-### 🎬 Kịch Bản 4: Tin Nhắn Độc / Hỏng Mạng SMTP (Poison Pill & Network Failure)
+### Kịch Bản 4: Tin Nhắn Độc / Hỏng Mạng SMTP (Poison Pill & Network Failure)
 - **Vấn đề:** Đơn hàng bị lỗi hoặc SMTP bị nghẽn ➔ Làm đứng toàn bộ hàng chờ tin nhắn.
 - **Giải pháp:** Cấu hình `RetryTopicConfiguration` (Thử lại 3 lần, mỗi lần 2s). Nếu sau 3 lần vẫn lỗi ➔ Chuyển sang Dead Letter Topic (`auction.events.ended-dlt`) và gọi `@DltHandler` để Admin xử lý thủ công.
 
-### 🎬 Kịch Bản 5: Lệch Trạng Thái Do Redis Cache Bị Cũ (Stale Redis Cache)
+### Kịch Bản 5: Lệch Trạng Thái Do Redis Cache Bị Cũ (Stale Redis Cache)
 - **Vấn đề:** Hàm xem chi tiết bật Redis Cache `@Cacheable(value = "auctions")`. Khi Robot đổi trạng thái trong CSDL từ `SCHEDULED` ➔ `RUNNING`, nếu không xóa cache ➔ Trang chi tiết bị kẹt ở chữ "SẮP DIỄN RA".
 - **Giải pháp:** Thêm `@CacheEvict(value = "auctions", allEntries = true)` vào Robot `AuctionScheduler.java`. Mỗi 10s Robot quét DB đồng thời xóa sạch bản cache rác trong Redis ➔ Trang chi tiết và ngoài danh sách luôn đồng bộ 100% `🟢 ĐANG ĐẤU GIÁ`.

@@ -1,6 +1,6 @@
 # 🌐 EUREKA SERVER (SERVICE DISCOVERY REGISTRY)
 
-## 1. Tong Quan Dịch Vụ
+## 1. Tổng Quan Dịch Vụ
 `eureka-server` là **Trạm Đăng Ký & Định Vị Dịch Vụ Trung Tâm (Service Discovery Registry)** thuộc hệ thống Backend Đấu Giá Microservices, xây dựng trên nền tảng **Spring Cloud Netflix Eureka Server**.
 
 Nhiệm vụ cốt lõi của `eureka-server`:

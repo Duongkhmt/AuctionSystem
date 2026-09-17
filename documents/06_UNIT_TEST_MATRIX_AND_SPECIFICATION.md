@@ -6,7 +6,7 @@
 
 ---
 
-## 📊 1. Báo Cáo Tiến Độ Phủ Kịch Bản Test Của Toàn Bộ Dự Án (PO Dashboard)
+## 1. Báo Cáo Tiến Độ Phủ Kịch Bản Test Của Toàn Bộ Dự Án (PO Dashboard)
 
 | Phân Hệ / Thành Phần                            | Tổng Kịch Bản | Đã Hoàn Thành `[x]` | Chưa Thực Hiện `[ ]` | Tỷ Lệ Hoàn Thành |
 |:------------------------------------------------|:-------------:|:-------------------:|:--------------------:|:----------------:|
@@ -22,7 +22,7 @@
 
 ---
 
-## 📋 2. Ma Trận Kịch Bản Kiểm Thử Chi Tiết (Test Scenarios Matrix)
+## 2. Ma Trận Kịch Bản Kiểm Thử Chi Tiết (Test Scenarios Matrix)
 
 ### A. Phân Hệ Đấu Giá & Mua Ngay (`BiddingService`)
 
@@ -118,7 +118,7 @@
 
 ---
 
-## 🛠️ 3. Quy Chuẩn Viết Unit Test Cho Developer Mới
+## 3. Quy Chuẩn Viết Unit Test Cho Developer Mới
 
 Khi viết thêm bất kỳ test case nào vào dự án, Developer **bắt buộc tuân thủ 3 quy tắc**:
 

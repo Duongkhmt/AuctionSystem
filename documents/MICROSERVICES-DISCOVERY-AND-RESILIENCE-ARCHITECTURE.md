@@ -9,7 +9,7 @@ Toàn bộ hệ thống Đấu giá (xem sản phẩm, đặt giá bid, quản l
 2. **Rủi ro An toàn & Bảo mật Tài chính (Security Isolation)**: Mã nguồn quản lý tài khoản Ví tiền (số dư `balance`, sổ cái giao dịch) nằm chung dự án với mã nguồn đăng bài sản phẩm public. Một lỗ hổng bảo mật ở tính năng xem bài đăng có thể dẫn tới việc bị khai thác tràn quyền đọc/sửa dữ liệu số dư ví.
 3. **Bài toán Tải trọng Độc lập (Independent Scalability)**: Nghiệp vụ Đấu giá (`auction-service`) có tần suất ghi/đọc cực cao (hàng ngàn request/giây khi thầu), trong khi Nghiệp vụ Ví tiền (`payment-service`) có tần suất truy vấn ít hơn nhưng đòi hỏi độ chính xác tuyệt đối và khóa dữ liệu nghiêm ngặt (`SELECT FOR UPDATE`). Tách riêng giúp ta nâng cấp tài nguyên RAM/CPU cho từng service theo nhu cầu thực tế mà không lãng phí.
 
-#### 🟢 Giải pháp Kiến trúc Microservices Phân tách 3 Dịch vụ
+#### Giải pháp Kiến trúc Microservices Phân tách 3 Dịch vụ
 Hệ thống được chia thành **3 ứng dụng hoàn toàn độc lập với phân định ranh giới nghiệp vụ (Bounded Context) rõ ràng**:
 
 ```mermaid
@@ -25,11 +25,16 @@ flowchart TD
         PaymentService["PAYMENT-SERVICE (Port 8082)<br/>Quản lý Ví Tiền (payment_db)"]
     end
 
-    AuctionService -.->|1a. Tự đăng ký & Heartbeat 30s| EurekaServer
-    PaymentService -.->|1b. Tự đăng ký & Heartbeat 30s| EurekaServer
+    PaymentService -.->|1a. Gửi IP 8082 đăng ký danh tính| EurekaServer
+    EurekaServer -.->|1b. Phản hồi xác nhận 200 OK| PaymentService
 
-    AuctionService -->|2. Tra cứu IP PAYMENT-SERVICE| EurekaServer
-    AuctionService -->|3. Gọi OpenFeign HTTP trừ tiền| PaymentService
+    AuctionService -.->|2a. Gửi IP 8080 đăng ký danh tính| EurekaServer
+    EurekaServer -.->|2b. Phản hồi xác nhận 200 OK| AuctionService
+
+    AuctionService -->|3a. Tra cứu vị trí PAYMENT-SERVICE| EurekaServer
+    EurekaServer -->|3b. Trả về địa chỉ IP 8082| AuctionService
+
+    AuctionService -->|4. Gọi OpenFeign: Thanh toán, Giải ngân, Xem ví & Lịch sử| PaymentService
 ```
 
 ---

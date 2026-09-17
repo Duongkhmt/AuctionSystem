@@ -1,8 +1,8 @@
-# 📕 TÀI LIỆU TOÀN DIỆN VỀ KIẾN TRÚC REDIS TRONG HỆ THỐNG ĐẤU GIÁ (PROJECT: AUCTION SYSTEM)
+# 📕ÀI LIỆU TOÀN DIỆN VỀ KIẾN TRÚC REDIS TRONG HỆ THỐNG ĐẤU GIÁ (PROJECT: AUCTION SYSTEM)
 
 ---
 
-## 🎯 TỔNG QUAN (OVERVIEW)
+## TỔNG QUAN (OVERVIEW)
 
 Trong hệ thống Đấu Giá Trực Tuyến `auction-service`, **Redis (Remote Dictionary Server)** đóng vai trò là một **Hệ thống Bộ nhớ Đệm RAM Siêu Tốc (In-Memory Data Store)** với 3 trụ cột kiến trúc cốt lõi:
 
@@ -21,9 +21,9 @@ Trong hệ thống Đấu Giá Trực Tuyến `auction-service`, **Redis (Remote
 
 ---
 
-# 🔴 PHẦN 1: REDIS CACHING (BỘ ĐỆM DỮ LIỆU RAM - SPRING CACHE)
+# PHẦN 1: REDIS CACHING (BỘ ĐỆM DỮ LIỆU RAM - SPRING CACHE)
 
-### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
+### 1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Redis Cache đóng vai trò là **"Tờ Giấy Nháp RAM"** ghi sẵn các dữ liệu được người dùng đọc/polling liên tục:
 
 1. **`bid_history` (TTL = 30 giây):**
@@ -37,7 +37,7 @@ Redis Cache đóng vai trò là **"Tờ Giấy Nháp RAM"** ghi sẵn các dữ 
 
 ---
 
-### ❓ KHI CÓ REDIS CACHING NÓ NHƯ THẾ NÀO?
+### KHI CÓ REDIS CACHING NÓ NHƯ THẾ NÀO?
 - Khi 5,000 người dùng cùng mở màn hình ngắm sản phẩm và F5/Polling lịch sử đấu giá liên tục 2s/lần.
 - Lần truy cập đầu tiên $\rightarrow$ Đọc DB và dán kết quả lên Redis RAM.
 - **4,999 lần truy cập tiếp theo $\rightarrow$ Đọc thẳng từ Redis RAM với tốc độ siêu tốc 1 - 2 millisecond.**
@@ -45,16 +45,16 @@ Redis Cache đóng vai trò là **"Tờ Giấy Nháp RAM"** ghi sẵn các dữ 
 
 ---
 
-### 💥 NẾU KHÔNG CÓ REDIS CACHING THÌ SAO?
+### NẾU KHÔNG CÓ REDIS CACHING THÌ SAO?
 - 5,000 người dùng Polling lịch sử bid 2s/lần $\rightarrow$ Phát sinh **2,500 câu SQL `SELECT` phức tạp/giây** đâm thẳng xuống PostgreSQL đĩa cứng.
 - Đĩa I/O của PostgreSQL bị nghẽn hoàn toàn, DB Connection Pool bị cạn kiệt.
 - **Hậu quả:** Toàn bộ ứng dụng quay tròn, người dùng bị lỗi Timeout (HTTP 504), trang web sập hoàn toàn!
 
 ---
 
-# 🔴 PHẦN 2: REDIS RATE LIMITING (CẦU DAO CHỐNG QUÁ TẢI & BOT SPAM)
+# PHẦN 2: REDIS RATE LIMITING (CẦU DAO CHỐNG QUÁ TẢI & BOT SPAM)
 
-### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
+### 1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Rate Limiting đóng vai trò là **"Cầu Dao An Toàn Tự Động"** kiểm soát tốc độ bấm nút của từng cá nhân người dùng:
 
 - *Tập tin:* [`RateLimit.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/aspect/RateLimit.java), [`RateLimitAspect.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/aspect/RateLimitAspect.java)
@@ -75,16 +75,16 @@ Rate Limiting đóng vai trò là **"Cầu Dao An Toàn Tự Động"** kiểm s
 
 ---
 
-### 💥 NẾU KHÔNG CÓ REDIS RATE LIMITING THÌ SAO?
+### NẾU KHÔNG CÓ REDIS RATE LIMITING THÌ SAO?
 - 1 Bot Auto-click gửi 100 requests/giây $\rightarrow$ Server Java phải gánh 100 luồng chạy qua 8 bước nặng nhọc (Query User, Query Auction, Query Bid, Validate, Proxy Bidding, Anti-sniping, Save DB).
 - **Phát sinh 800 câu lệnh SQL nặng nhọc/giây.**
 - **Hậu quả:** CPU của Server Java vọt lên 100%, RAM kiệt sức, toàn bộ người dùng thật khác không thể bấm Đặt Giá hay Mua Hàng được nữa!
 
 ---
 
-# 🔴 PHẦN 3: REDIS DISTRIBUTED LOCK (KHÓA PHÂN TÁN ĐỒNG THỜI - REDISSON RLOCK)
+# PHẦN 3: REDIS DISTRIBUTED LOCK (KHÓA PHÂN TÁN ĐỒNG THỜI - REDISSON RLOCK)
 
-### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
+### 1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Distributed Lock đóng vai trò là **"Cây Búa Trọng Tài Báo Giờ"** ép các người dùng khác nhau phải xếp hàng từng người một khi cùng tranh chấp 1 sản phẩm:
 
 - *Tập tin:* [`RedisConfig.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/config/RedisConfig.java) (`RedissonClient`), [`BiddingConcurrencyFacade.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/service/BiddingConcurrencyFacade.java), [`AuctionBiddingController.java`](file:///home/duong/Projects/Backend/auction-service/src/main/java/com/duong/auction/system/controller/AuctionBiddingController.java)
@@ -100,7 +100,7 @@ Distributed Lock đóng vai trò là **"Cây Búa Trọng Tài Báo Giờ"** ép
 
 ---
 
-### ❓ KHI CÓ REDIS DISTRIBUTED LOCK NÓ NHƯ THẾ NÀO?
+### KHI CÓ REDIS DISTRIBUTED LOCK NÓ NHƯ THẾ NÀO?
 - Ở 3 giây cuối cùng, **User A, User B và User C** cùng bấm Đặt Giá / Mua Ngay cho chiếc iPhone 15 (#101) ở đúng mốc 11:59:59.000.
 - User A cướp được chìa khóa `lock:auction:101` trước 0.001ms $\rightarrow$ User A vào DB xử lý (Giá nhảy 10.5 triệu).
 - User B và C đứng ngoài hàng chờ (Queue) trong tối đa 5s.
@@ -109,7 +109,7 @@ Distributed Lock đóng vai trò là **"Cây Búa Trọng Tài Báo Giờ"** ép
 
 ---
 
-### 💥 NẾU KHÔNG CÓ REDIS DISTRIBUTED LOCK THÌ SAO?
+### NẾU KHÔNG CÓ REDIS DISTRIBUTED LOCK THÌ SAO?
 Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 100%**:
 
 1. **Thảm họa Bid Trùng Giá:**
@@ -121,9 +121,9 @@ Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 1
 
 ---
 
-# 🔴 PHẦN 4: REDIS USER SESSION & STATUS CACHE (BỘ BẢO VỆ PHIÊN & TRẠNG THÁI NGUỜI DÙNG)
+#  PHẦN 4: REDIS USER SESSION & STATUS CACHE (BỘ BẢO VỆ PHIÊN & TRẠNG THÁI NGUỜI DÙNG)
 
-### 📌 1. Chi tiết chức năng & Nghiệp vụ áp dụng
+###  1. Chi tiết chức năng & Nghiệp vụ áp dụng
 Đóng vai trò là **"Bộ Đệm Kiểm Tra Quyền Siêu Tốc 0ms SQL"** kiểm soát trạng thái tài khoản và mốc đăng xuất gần nhất:
 
 1. **`user:status:{email}` (TTL = 3 ngày):**
@@ -131,7 +131,7 @@ Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 1
 2. **`user:logout_at:{email}` (TTL = 3 ngày):**
    - *Tác dụng:* Lưu mốc timestamp đăng xuất gần nhất. Nếu `tokenIssuedAt < (lastLogoutAt - 1000ms)` ➔ Filter từ chối ngay HTTP 401.
 
-### 🔄 Mô hình Cache-Aside & DB Fallback (Theo chỉ đạo Tech Lead):
+###  Mô hình Cache-Aside & DB Fallback (Theo chỉ đạo Tech Lead):
 - **PostgreSQL là Single Source of Truth**: Lưu dữ liệu vĩnh viễn.
 - **Redis làm Cache ngắn hạn**: Không lưu vĩnh viễn bất kỳ Key nào.
 - **Fallback DB khi Cache Miss**: Nếu Redis bị xoá data, hết hạn TTL hoặc restart, Filter tự động fallback query PostgreSQL `loadUserByUsername` và kiểm tra status trực tiếp từ CSDL.
@@ -144,16 +144,16 @@ Nếu không có Khóa Phân Tán, 3 thảm họa sau **CHẮC CHẮN XẢY RA 1
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
 | TIÊU CHÍ          | 1. REDIS CACHING                  | 2. REDIS RATE LIMITING            | 3. REDIS DISTRIBUTED LOCK         | 4. REDIS USER SESSION & STATUS    |
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
-| 🎯 Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    | Từng Email người dùng             |
-| 🔑 Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | lock:auction:101                  | user:status:a@gmail.com           |
-| ⚙️ Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Redisson RLock Facade + Supplier  | OncePerRequestFilter + Cache-Aside|
-| 🛡️ Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Bảo vệ Tính Đúng Đắn Dữ Liệu DB   | Bảo vệ Session & Thu hồi Token    |
-| 💥 Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | Bid trùng giá, đẻ 2 đơn hàng      | Tràn RAM Redis do lưu Token rác   |
+| Phạm vi        | Dữ liệu Đọc (Read Data)           | Từng UserID cá nhân               | Từng Phiên Đấu Giá (auctionId)    | Từng Email người dùng             |
+| Key Redis      | bid_history::101                  | rate_limit:placeBid:user:10       | lock:auction:101                  | user:status:a@gmail.com           |
+| Cơ chế          | Spring @Cacheable / @CacheEvict   | Aspect @Order(1) + Lua Script INCR| Redisson RLock Facade + Supplier  | OncePerRequestFilter + Cache-Aside|
+| Bảo vệ cái gì? | Bảo vệ DB khỏi bị nát đĩa I/O     | Bảo vệ Server Java khỏi bị Spam   | Bảo vệ Tính Đúng Đắn Dữ Liệu DB   | Bảo vệ Session & Thu hồi Token    |
+| Rủi ro nếu thiếu| DB bị cạn Connection & sập hoàn toàn| CPU Java vọt 100%, sập server     | Bid trùng giá, đẻ 2 đơn hàng      | Tràn RAM Redis do lưu Token rác   |
 +-------------------+-----------------------------------+-----------------------------------+-----------------------------------+-----------------------------------+
 ```
 
 ---
 
-### 🎯 TÓM LẠI:
+###  TÓM LẠI:
 Nhờ sự phối hợp nhịp nhàng của **4 Lớp Redis** (Caching $\rightarrow$ Rate Limiting $\rightarrow$ Distributed Lock $\rightarrow$ User Session & Status Cache), hệ thống Đấu Giá `auction-service` của bạn đạt tới đẳng cấp của một **Hệ Thống Doanh Nghiệp Chịu Tải Cao (High-Throughput Enterprise System)**: Vừa chạy siêu tốc 1-2ms, vừa chống spam bot hiệu quả, vừa thu hồi token thông minh tối ưu RAM, vừa đảm bảo tính toàn vẹn dữ liệu DB 100%!
 

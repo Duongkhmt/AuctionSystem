@@ -13,7 +13,7 @@ Nếu dùng cơ chế ghi đĩa PostgreSQL truyền thống:
 
 ---
 
-### ⚡ 2. Giải Pháp Tối Ưu: Redis Atomic Lua Script
+### 2. Giải Pháp Tối Ưu: Redis Atomic Lua Script
 
 Gộp 3 thao tác **Đọc ➔ Kiểm tra ➔ Cập nhật giá** thành một thao tác nguyên tử (Atomic) duy nhất, thực thi bằng Lua script trên RAM Redis. 
 
@@ -33,7 +33,7 @@ Khi một phiên đấu giá kết thúc (do hết giờ hoặc người dùng M
 
 ---
 
-### 🟢 2. Giải Pháp Kafka Event-Driven & Email Notification
+### 2. Giải Pháp Kafka Event-Driven & Email Notification
 
 - Luồng chính (`AuctionScheduler.java`) chỉ làm đúng việc chốt trạng thái phiên thầu sang `ENDED` trong CSDL ➔ Đăng ký phát sự kiện `AuctionEndedEvent` lên Kafka qua `TransactionSynchronization.afterCommit`. Robot rảnh tay ngay lập tức để phục vụ các phiên khác.
 - Phía Consumer ngầm (`AuctionEndedConsumer.java`) nhặt sự kiện từ Kafka và **tự động đẻ bản ghi `Order` 48h vào DB ngầm + Gọi EmailService phát Email chúc mừng cho Winner** phía sau.

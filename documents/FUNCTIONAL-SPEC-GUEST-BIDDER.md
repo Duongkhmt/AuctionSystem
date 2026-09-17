@@ -1,9 +1,5 @@
 # ĐẶC TẢ CHỨC NĂNG: DÀNH CHO KHÁCH VẮNG LAI & NGƯỜI MUA (GUEST & BIDDER)
 
-**Hệ thống:** Sàn Đấu Giá Trực Tuyến Đa Ngành Hàng  
-**Phiên bản đặc tả:** 1.0  
-**Tác giả:** Product Owner (PO) Team  
-
 ---
 
 ## BẢNG TÓM TẮT DANH SÁCH CHỨC NĂNG

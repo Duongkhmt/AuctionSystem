@@ -1,13 +1,13 @@
-# 💳 PAYMENT SERVICE (VIRTUAL WALLET & ESCROW LEDGER)
+# PAYMENT SERVICE (VIRTUAL WALLET & ESCROW LEDGER)
 
 ## 1. Tổng Quan Dịch Vụ
-`payment-service` là **Dịch Vụ Ví Tiền Ảo & Sổ Sách Tài Chính Nội Bộ (Escrow & Wallet Ledger)** trong hệ thống Đấu Giá Microservices.
+`payment-service` là **Dịch Vụ Ví Tiền Ảo & Sổ Sách Tài Chính Nội Bộ (Escrow & Wallet Ledger)** trong hệ thống Đấu Giá Microservices Monorepo (`Backend/`).
 
 Dịch vụ hoạt động hoàn toàn **ẩn khỏi Internet (Private Network Server-to-Server)**, chỉ tiếp nhận các cuộc gọi ủy quyền từ `AUCTION-SERVICE` qua OpenFeign.
 
 ---
 
-## 🛠️ 2. Công Nghệ & Hạ Tầng
+## 2. Công Nghệ & Hạ Tầng
 
 - **Language & Framework:** Java 21, Spring Boot 3.2.3, Spring Data JPA, Spring Security 6
 - **Service Discovery:** Spring Cloud Netflix Eureka Client (`eureka.client.service-url.defaultZone=http://localhost:8761/eureka/`)
@@ -16,7 +16,7 @@ Dịch vụ hoạt động hoàn toàn **ẩn khỏi Internet (Private Network S
 
 ---
 
-## 🔑 3. Cơ Chế Bảo Mặt Nội Bộ (100% Internal Security)
+## 3. Cơ Chế Bảo Mặt Nội Bộ (100% Internal Security)
 
 Dịch vụ không tiếp nhận kết nối trực tiếp từ Trình duyệt (Browser) hay Frontend, do đó đã **loại bỏ hoàn toàn các cấu hình JWT Filter & CORS thừa**.
 
@@ -28,7 +28,7 @@ Dịch vụ không tiếp nhận kết nối trực tiếp từ Trình duyệt (
 
 ---
 
-## 💾 4. CSDL & Mối Quan Hệ Bảng (`payment_db`)
+##  4. CSDL & Mối Quan Hệ Bảng (`payment_db`)
 
 Dịch vụ sở hữu CSDL riêng biệt `payment_db` gồm 2 bảng cốt lõi:
 
@@ -42,7 +42,7 @@ Dịch vụ sở hữu CSDL riêng biệt `payment_db` gồm 2 bảng cốt lõi
 
 ---
 
-## 🔌 5. Danh Sách RESTful API Nội Bộ
+## 5. Danh Sách RESTful API Nội Bộ
 
 | Method | Endpoint | Mô Tả Nghiệp Vụ Nội Bộ |
 | :--- | :--- | :--- |
@@ -53,7 +53,7 @@ Dịch vụ sở hữu CSDL riêng biệt `payment_db` gồm 2 bảng cốt lõi
 
 ---
 
-## 🚀 6. Hướng Dẫn Khởi Chạy
+## 6. Hướng Dẫn Khởi Chạy
 
 ```bash
 # Di chuyển vào thư mục payment-service

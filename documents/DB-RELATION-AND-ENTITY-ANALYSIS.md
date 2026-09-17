@@ -72,7 +72,7 @@ Trong kiến trúc Microservices hiện tại, hệ thống Cơ sở dữ liệu
 
 ---
 
-## 🔒 3. CƠ CHẾ BẢO VỆ DỮ LIỆU & CHỐNG RACE CONDITION TRÊN DATABASE
+## 3. CƠ CHẾ BẢO VỆ DỮ LIỆU & CHỐNG RACE CONDITION TRÊN DATABASE
 
 ### 3.1. Khóa Hàng Tạm Giữ Ví Tiền (`Pessimistic Lock`)
 Để chống hiện tượng **Race Condition** (khi 2 request trừ tiền cùng lúc diễn ra ở cùng 1 millisecond), `payment-service` áp dụng cơ chế khóa hàng nguyên tử trên PostgreSQL:
@@ -115,7 +115,7 @@ Optional<Wallet> findByUserIdForUpdate(@Param("userId") Long userId);
 
 ---
 
-## 🛠 5. BẢNG MAPPING FILE NGUỒN ENTITY (ENTITY CODE MATRIX)
+## 5. BẢNG MAPPING FILE NGUỒN ENTITY (ENTITY CODE MATRIX)
 
 | STT | Database | Tên Entity Class | Đường Dẫn File Nguồn Mã Khởi Tạo |
 |:---|:---|:---|:---|
