@@ -1,15 +1,13 @@
-# 1. Project Overview
+# 🔨 AUCTION SERVICE (CORE ENGINE & SINGLE ENTRY POINT)
 
-**AuctionSystem (Backend Microservices)** là hệ thống Backend phục vụ cho nền tảng **Đấu Giá Trực Tuyến (Online Auction Platform)** đa ngành hàng.
+**`auction-service` (Port 8080)** là Dịch vụ Đấu Giá Chính, Quản Lý Đơn Hàng & Cổng Tiếp Nhận DUY NHẤT (Single Entry Point) cho ứng dụng Frontend trong hệ thống Monorepo Backend (`Backend/`).
 
-Hệ thống giải quyết bài toán đấu giá hàng hóa minh bạch, cạnh tranh theo thời gian thực và quản lý tài sản động. 
-Nền tảng hỗ trợ người dùng đăng tải sản phẩm với thuộc tính đa dạng (Nhà đất, Xe hơi, Tranh ảnh, Đồ điện tử...), hỗ trợ quy trình kiểm duyệt bài đăng bởi Quản trị viên (Admin), tích hợp công cụ tự động đấu giá (Proxy Bidding Engine), 
-chế độ chốt thầu thời gian cứng (Hard-Close Mode — Hết giờ là hết giờ), tự động xử lý đơn hàng bùng tiền quá 48h kèm phạt gậy vi phạm (Unpaid Strikes), và tự động hóa chuyển đổi trạng thái phiên đấu giá ngầm bằng Robot Scheduler.
+Dịch vụ giải quyết bài toán đấu giá hàng hóa minh bạch, cạnh tranh theo thời gian thực (Redis Lua Script 0.02ms), kiểm duyệt sản phẩm bởi Admin, tự động đấu giá (Proxy Bidding Engine), chế độ chốt thầu thời gian cứng (Hard-Close Mode), xử lý đơn bùng tiền quá 48h (Unpaid Strikes) bằng Robot Scheduler 10s ngầm, và **uỷ quyền giao tiếp ví tiền sang `payment-service` qua OpenFeign (`WalletProxyController`)**.
 
 ### Đối tượng sử dụng:
 **User (Người dùng hệ thống):** Xem thông tin sản phẩm, tham gia đặt giá cạnh tranh, cài đặt mức giá trần tự động đấu giá (Proxy Bid), 
 xem lịch sử thầu ẩn danh, mua ngay sản phẩm với giá cố định (Buy Now), tạo sản phẩm đăng bán cá nhân, quản lý danh sách sản phẩm trúng thầu, 
-chốt địa chỉ thanh toán Checkout, xác nhận nhận hàng và quản lý đơn hàng bán được (nhập mã vận đơn xuất hàng).
+chốt địa chỉ thanh toán Checkout, xem số dư ví tiền & lịch sử giao dịch cá nhân (`/v1/wallets/me`), xác nhận nhận hàng và quản lý đơn hàng bán được.
 
 **Admin (Quản trị viên):** Xem danh sách các bài đăng sản phẩm chờ duyệt, thực hiện chấp thuận (Approve) 
 hoặc từ chối bài đăng (Reject) kèm theo lý do cụ thể.
